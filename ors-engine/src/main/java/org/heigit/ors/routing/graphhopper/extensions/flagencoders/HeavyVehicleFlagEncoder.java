@@ -173,6 +173,48 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             return EncodingManager.Access.CAN_SKIP;
         }
 
+        // paving_stone
+        String surfaceTag = way.getTag("surface");
+        if (surfaceTag != null) {
+            if ("paving_stone".equals(surfaceTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+        }
+
+        // bus ?
+        String ztmRouteTag = way.getTag("routing:ztm");
+        if (ztmRouteTag != null) {
+            if ("no".equals(ztmRouteTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+            // if ("yes".equals(ztmRouteTag)) {
+            //     return EncodingManager.Access.WAY;
+            // }
+        }
+
+        // oneway PSV WE CAN GO THERE!
+        String oneWayPsv = way.getTag("oneway:psv");
+        if (oneWayPsv != null) {
+            if ("no".equals(oneWayPsv)) {
+                return EncodingManager.Access.WAY;
+            }
+        }
+
+        // we ommit ways to parking_aisle
+        String serviceTag = way.getTag("service");
+        if (serviceTag != null) {
+            if ("parking_aisle".equals(serviceTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+        }
+
+        // we ommit driveways
+        if (serviceTag != null) {
+            if ("driveway".equals(serviceTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+        }
+
         if (VAL_TRACK.equals(highwayValue)) {
             String tt = way.getTag("tracktype");
             int grade = getTrackGradeLevel(tt);
@@ -189,8 +231,8 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
         // multiple restrictions needs special handling compared to foot and bike, see also motorcycle
         for (String restrictionValue : restrictionValues) {
             if (!restrictionValue.isEmpty()) {
-                if (restrictedValues.contains(restrictionValue) && !getConditionalTagInspector().isRestrictedWayConditionallyPermitted(way))
-                    return EncodingManager.Access.CAN_SKIP;
+                if (restrictedValues.contains(restrictionValue))
+                    return isRestrictedWayConditionallyPermitted(way);
                 if (intendedValues.contains(restrictionValue))
                     return EncodingManager.Access.WAY;
             }
@@ -218,10 +260,7 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             }
         }
 
-        if (getConditionalTagInspector().isPermittedWayConditionallyRestricted(way))
-            return EncodingManager.Access.CAN_SKIP;
-        else
-            return EncodingManager.Access.WAY;
+        return isPermittedWayConditionallyRestricted(way);
     }
 
     @Override

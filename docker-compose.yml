@@ -4,6 +4,7 @@
 services:
   # ----------------- ORS application configuration ------------------- #
   ors-app:
+    platform: linux/amd64
     # Activate the following lines to build the container from the repository
     # You have to add --build to the docker compose command to do so
     build:
@@ -24,11 +25,11 @@ services:
       #- ./logs:/home/ors/logs  # Mount logs directory individually
       #- ./files:/home/ors/files  # Mount files directory individually
     environment:
-      REBUILD_GRAPHS: False  # Set to True to rebuild graphs on container start.
+      REBUILD_GRAPHS: True  # Set to True to rebuild graphs on container start.
       CONTAINER_LOG_LEVEL: INFO  # Log level for the container. Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
       # If you don't want the default ors-config.yml you can specify a custom file name, that should match the file in
       # your 'config' volume mount.
-      #ORS_CONFIG_LOCATION: /home/ors/config/my-ors-config.yml  # Location of your ORS configuration file in the docker container
+      ORS_CONFIG_LOCATION: /home/ors/config/my-ors-config.yml  # Location of your ORS configuration file in the docker container
 
       # ------------------ JAVA OPTS ------------------ #
       # Configure the memory settings for JAVA or pass additional opts
