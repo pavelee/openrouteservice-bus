@@ -155,6 +155,15 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
 
     @Override
     public EncodingManager.Access getAccess(ReaderWay way) {
+        String highway = way.getTag("highway");
+        String service = way.getTag("service");
+        String amenity = way.getTag("amenity");
+        
+        // Debug log
+        if ("service".equals(highway) || amenity != null) {
+            System.out.println("DEBUG: highway=" + highway + ", service=" + service + ", amenity=" + amenity);
+        }
+        
         String highwayValue = way.getTag(KEY_HIGHWAY);
         String[] restrictionValues = way.getFirstPriorityTagValues(restrictions);
         if (highwayValue == null) {
@@ -171,6 +180,32 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
                 }
             }
             return EncodingManager.Access.CAN_SKIP;
+        }
+
+        // Check for bus depots and bus stations
+        String amenityTag = way.getTag("amenity");
+        if ("bus_station".equals(amenityTag)) {
+            return EncodingManager.Access.WAY;
+        }
+
+        String serviceTag1 = way.getTag("service");
+        if (serviceTag1 != null) {
+            if ("driveway".equals(serviceTag1)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+            // Allow bus bays and bus depots for heavy vehicles (buses)
+            if ("bus_bay".equals(serviceTag1) || "bus_depot".equals(serviceTag1)) {
+                return EncodingManager.Access.WAY;
+            }
+        }
+
+        // Check for public transport stations
+        String publicTransportTag = way.getTag("public_transport");
+        if ("station".equals(publicTransportTag) || "stop_position".equals(publicTransportTag)) {
+            String busTag = way.getTag("bus");
+            if ("yes".equals(busTag)) {
+                return EncodingManager.Access.WAY;
+            }
         }
 
         // paving_stone
@@ -192,6 +227,12 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             // }
         }
 
+        // Check for bus bays - buses should have access to bus bays
+        String busBayTag = way.getTag("bus_bay");
+        if (busBayTag != null && ("yes".equals(busBayTag) || "left".equals(busBayTag) || "right".equals(busBayTag) || "both".equals(busBayTag))) {
+            return EncodingManager.Access.WAY;
+        }
+
         // oneway PSV WE CAN GO THERE!
         String oneWayPsv = way.getTag("oneway:psv");
         if (oneWayPsv != null) {
@@ -208,10 +249,14 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             }
         }
 
-        // we ommit driveways
+        // we ommit driveways BUT allow bus bays for buses
         if (serviceTag != null) {
             if ("driveway".equals(serviceTag)) {
                 return EncodingManager.Access.CAN_SKIP;
+            }
+            // Allow bus bays for heavy vehicles (buses)
+            if ("bus_bay".equals(serviceTag)) {
+                return EncodingManager.Access.WAY;
             }
         }
 
