@@ -27,6 +27,7 @@ ors-api/src/main/resources/ors-config*
 ors-config*
 # ors-docker/**
 ors-docker/files
+!ors-docker/graphs
 
 envs/
 ors-config-repo/
