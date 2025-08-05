@@ -54,10 +54,10 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
 
         restrictedValues.add("agricultural");
         restrictedValues.add("forestry");
-        restrictedValues.add("delivery");
+        // restrictedValues.add("delivery");
         restrictedValues.add("emergency");
 
-        blockByDefaultBarriers.add("bus_trap");
+        // blockByDefaultBarriers.add("bus_trap");
         blockByDefaultBarriers.add("sump_buster");
 
         initSpeedLimitHandler(this.toString());
@@ -91,6 +91,48 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
                 }
             }
             return EncodingManager.Access.CAN_SKIP;
+        }
+
+        // paving_stone
+        String surfaceTag = way.getTag("surface");
+        if (surfaceTag != null) {
+            if ("paving_stone".equals(surfaceTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+        }
+
+        // bus ?
+        String ztmRouteTag = way.getTag("routing:ztm");
+        if (ztmRouteTag != null) {
+            if ("no".equals(ztmRouteTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+            // if ("yes".equals(ztmRouteTag)) {
+            //     return EncodingManager.Access.WAY;
+            // }
+        }
+
+        // oneway PSV WE CAN GO THERE!
+        String oneWayPsv = way.getTag("oneway:psv");
+        if (oneWayPsv != null) {
+            if ("no".equals(oneWayPsv)) {
+                return EncodingManager.Access.WAY;
+            }
+        }
+
+        // we ommit ways to parking_aisle
+        String serviceTag = way.getTag("service");
+        if (serviceTag != null) {
+            if ("parking_aisle".equals(serviceTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+        }
+
+        // we ommit driveways
+        if (serviceTag != null) {
+            if ("driveway".equals(serviceTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
         }
 
         if ("track".equals(highwayValue)) {

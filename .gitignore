@@ -25,7 +25,8 @@ node_modules/
 # Ignore all ors-config files except for the sample one, useful for development and testing
 ors-api/src/main/resources/ors-config*
 ors-config*
-ors-docker/**
+# ors-docker/**
+ors-docker/files
 
 envs/
 ors-config-repo/
@@ -37,3 +38,6 @@ docs/.vitepress/cache
 /.integration-scenarios/debian-12-jar-mvn/tmp/
 
 gatling-results/**
+
+*.pbf
+*.osm

@@ -88,8 +88,8 @@ public abstract class VehicleFlagEncoder extends ORSAbstractFlagEncoder {
 
         restrictions.addAll(Arrays.asList("motorcar", "motor_vehicle", "vehicle", "access"));
 
-        restrictedValues.add("private");
-        restrictedValues.add("no");
+        // restrictedValues.add("private");
+        // restrictedValues.add("no");
         restrictedValues.add("restricted");
         restrictedValues.add("military");
 
