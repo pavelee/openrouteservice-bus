@@ -23,8 +23,12 @@ import com.graphhopper.reader.osm.conditional.ConditionalParser;
 import com.graphhopper.reader.osm.conditional.DateRangeParser;
 import com.graphhopper.routing.util.EncodingManager;
 import com.graphhopper.routing.util.TransportationMode;
+import com.graphhopper.routing.util.parsers.helpers.OSMValueExtractor;
 import com.graphhopper.util.PMap;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -41,6 +45,17 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
     // Mean speed for isochrone reach_factor
     private static final int MEAN_SPEED = 100;
 
+    // Kolekcje do obsługi kierunkowych tagów dla autobusów
+    // Autobusy często mają specjalne uprawnienia do jazdy pod prąd w niektórych ulicach
+    // np. oneway=yes ale bus:backward=yes
+    protected final HashSet<String> forwardKeys = new HashSet<>(5);
+    protected final HashSet<String> backwardKeys = new HashSet<>(5);
+    
+    // Lista tagów dostępu specyficznych dla autobusów i transportu publicznego
+    // PSV (Public Service Vehicle) i public_transport to tagi używane
+    // do oznaczania infrastruktury dla transportu publicznego
+    protected final List<String> busAccess = new ArrayList<>(5);
+
     public CarFlagEncoder(PMap properties) {
         this(properties.getInt("speed_bits", 5),
                 properties.getDouble("speed_factor", 5),
@@ -52,6 +67,13 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
     public CarFlagEncoder(int speedBits, double speedFactor, int maxTurnCosts) {
         super(speedBits, speedFactor, maxTurnCosts);
 
+        // Dodajemy obsługę autobusów - autobusy mają często specjalne oznaczenia
+        // bus=yes lub bus=designated które pozwalają im korzystać z dróg 
+        // niedostępnych dla zwykłych samochodów
+        intendedValues.add("bus");
+        intendedValues.add("psv"); // Public Service Vehicle - transport publiczny
+        intendedValues.add("public_transport"); // ogólny tag dla transportu publicznego
+
         restrictedValues.add("agricultural");
         restrictedValues.add("forestry");
         // restrictedValues.add("delivery");
@@ -59,6 +81,20 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
 
         // blockByDefaultBarriers.add("bus_trap");
         blockByDefaultBarriers.add("sump_buster");
+
+        // Inicjalizacja kolekcji dla autobusów
+        // busAccess - lista tagów dostępu specyficznych dla autobusów
+        // Pozwala autobusowi korzystać z dróg ograniczonych dla samochodów osobowych
+        busAccess.addAll(Arrays.asList("bus", "psv", "public_transport"));
+
+        // Obsługa kierunkowych tagów dla autobusów
+        // Autobusy mogą mieć różne uprawnienia w różnych kierunkach
+        // np. bus:forward=yes pozwala jazde w kierunku zgodnym z numeracją
+        forwardKeys.add("bus:forward");
+        forwardKeys.add("psv:forward");
+        
+        backwardKeys.add("bus:backward");
+        backwardKeys.add("psv:backward");
 
         initSpeedLimitHandler(this.toString());
     }
@@ -151,6 +187,8 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
             return EncodingManager.Access.CAN_SKIP;
 
         // multiple restrictions needs special handling compared to foot and bike, see also motorcycle
+        // Sprawdzamy czy autobus ma specjalne uprawnienia dostępu
+        boolean carsAllowed = way.hasTag(restrictions, intendedValues);
         for (String restrictionValue : restrictionValues) {
             if (!restrictionValue.isEmpty()) {
                 if (restrictedValues.contains(restrictionValue))
@@ -158,6 +196,13 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
                 if (intendedValues.contains(restrictionValue))
                     return EncodingManager.Access.WAY;
             }
+        }
+
+        // Sprawdzenie dostępu dla autobusów - kluczowa logika z HeavyVehicleFlagEncoder
+        // Jeśli droga ma ograniczenia dla samochodów ale NIE ma specjalnych uprawnień dla autobusów
+        // to autobus nie może tam jechać. Autobusy mają specjalne tagi jak bus=yes, psv=yes
+        if (way.hasTag(restrictions, restrictedValues) && !carsAllowed && !way.hasTag(busAccess, intendedValues)) {
+            return EncodingManager.Access.CAN_SKIP;
         }
 
         // do not drive street cars into fords
@@ -177,6 +222,36 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
         }
 
         return isPermittedWayConditionallyRestricted(way);
+    }
+
+    /**
+     * Obsługa specjalnych ograniczeń prędkości dla autobusów
+     * Autobusy mogą mieć inne limity prędkości niż samochody osobowe
+     * @param way droga OSM
+     * @return maksymalna prędkość dla autobusu na tej drodze
+     */
+    @Override
+    public double getMaxSpeed(ReaderWay way) {
+        // Sprawdzamy czy jest specjalny limit prędkości dla autobusów
+        double maxSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:bus"));
+        
+        // Sprawdzamy kierunkowe limity prędkości dla autobusów
+        double fwdSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:bus:forward"));
+        if (isValidSpeed(fwdSpeed) && (!isValidSpeed(maxSpeed) || fwdSpeed < maxSpeed)) {
+            maxSpeed = fwdSpeed;
+        }
+
+        double backSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:bus:backward"));
+        if (isValidSpeed(backSpeed) && (!isValidSpeed(maxSpeed) || backSpeed < maxSpeed)) {
+            maxSpeed = backSpeed;
+        }
+        
+        // Jeśli nie ma specjalnych limitów dla autobusów, używamy standardowej logiki
+        if (!isValidSpeed(maxSpeed)) {
+            maxSpeed = super.getMaxSpeed(way);
+        }
+        
+        return maxSpeed;
     }
 
     public double getMeanSpeed() {
