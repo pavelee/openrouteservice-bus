@@ -225,6 +225,52 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
     }
 
     /**
+     * Modyfikacja prędkości dla autobusów miejskich - preferuj główne drogi
+     * @param way droga OSM
+     * @return zmodyfikowana prędkość
+     */
+    @Override
+    protected double getSpeed(ReaderWay way) {
+        String highway = way.getTag("highway");
+        double speed = super.getSpeed(way);
+        
+        // Najwyższe bonusy dla infrastruktury autobusowej
+        if ("bus_guideway".equals(highway) || way.hasTag("bus_guideway", "yes")) {
+            return speed * 1.8; // 80% bonus dla pasów autobusowych
+        }
+        
+        if (way.hasTag("bus", "designated") || way.hasTag("psv", "designated")) {
+            return speed * 1.6; // 60% bonus dla dróg dedykowanych dla autobusów
+        }
+        
+        // Bonusy dla głównych dróg - preferowane dla autobusów
+        if ("motorway".equals(highway) || "motorway_link".equals(highway)) {
+            return speed * 1.4; // 40% bonus dla autostrad
+        } else if ("trunk".equals(highway) || "trunk_link".equals(highway)) {
+            return speed * 1.3; // 30% bonus dla dróg ekspresowych
+        } else if ("primary".equals(highway) || "primary_link".equals(highway)) {
+            return speed * 1.25; // 25% bonus dla dróg głównych
+        } else if ("secondary".equals(highway) || "secondary_link".equals(highway)) {
+            return speed * 1.15; // 15% bonus dla dróg drugorzędnych
+        } else if ("tertiary".equals(highway) || "tertiary_link".equals(highway)) {
+            return speed * 1.05; // 5% bonus dla dróg lokalnych
+        }
+        
+        // Kary dla dróg problemowych dla autobusów
+        else if ("residential".equals(highway)) {
+            return speed * 0.5; // 50% kara dla ulic mieszkaniowych - silnie unikaj
+        } else if ("unclassified".equals(highway)) {
+            return speed * 0.7; // 30% kara dla nieklasyfikowanych
+        } else if ("service".equals(highway)) {
+            return speed * 0.3; // 70% kara dla dróg serwisowych - bardzo unikaj
+        } else if ("living_street".equals(highway)) {
+            return speed * 0.2; // 80% kara dla stref zamieszkania - prawie wykluczaj
+        }
+        
+        return speed;
+    }
+
+    /**
      * Obsługa specjalnych ograniczeń prędkości dla autobusów
      * Autobusy mogą mieć inne limity prędkości niż samochody osobowe
      * @param way droga OSM

@@ -95,21 +95,26 @@ def process_osm_file(input_file, output_file):
                         return
                         # self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
                     
+                    # NOWY ŚWIAT KURCZAKI
+                    # if self.current_way in ['24384574', '306458016', '137020852', '137020852', '1111601198', '882352736'] and k == 'access' and v == 'private':
+                    #     self.is_private = True
+                    #     return
+
                     # Skip access=private tags
                     if k == 'access' and v == 'private':
                         self.is_private = True
                         return  # Skip writing this tag
                     
-                    # Change highway=residential to highway=tertiary
-                    if k == 'highway' and v == 'residential':
-                        self.is_residential = True
-                        self.out.write(f'    <{name} k="highway" v="tertiary"/>\n'.encode('utf-8'))
-                        return
+                    # # Change highway=residential to highway=tertiary
+                    # if k == 'highway' and v == 'residential':
+                    #     self.is_residential = True
+                    #     self.out.write(f'    <{name} k="highway" v="tertiary"/>\n'.encode('utf-8'))
+                    #     return
 
                     # change highway=unclassified to highway=tertiary
-                    if k == 'highway' and v == 'unclassified':
-                        self.out.write(f'    <{name} k="highway" v="tertiary"/>\n'.encode('utf-8'))
-                        return
+                    # if k == 'highway' and v == 'unclassified':
+                    #     self.out.write(f'    <{name} k="highway" v="residential"/>\n'.encode('utf-8'))
+                    #     return
 
                     # change highway=construction to highway=secondary
                     if k == 'highway' and v == 'construction':
