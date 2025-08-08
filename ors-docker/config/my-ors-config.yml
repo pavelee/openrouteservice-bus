@@ -18,12 +18,13 @@ ors:
             turn_costs: false  # Disable turn costs completely
             # block_fords: false
             # use_acceleration: false  # Disable acceleration calculations
-            # enable_custom_models: false
+            enable_custom_models: true  # WŁĄCZAMY obsługę custom models
         service:
           force_turn_costs: false
           u_turn_costs: 5000  # Or set very high to effectively disable U-turns
           # Use simple weighting that only considers distance
           weighting: shortest
+          allow_custom_models: true  # WŁĄCZAMY custom models w service
 
 # wtp_ln=128
 

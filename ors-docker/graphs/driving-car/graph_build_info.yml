@@ -1,4 +1,4 @@
-graph_build_date: 2025-08-07T20:51:36+0000
+graph_build_date: 2025-08-08T10:49:45+0000
 osm_date: null
 graph_version: 2
 profile_properties:
@@ -17,7 +17,7 @@ profile_properties:
       block_fords: false
       turn_costs: false
       use_acceleration: true
-      enable_custom_models: false
+      enable_custom_models: true
     preparation:
       min_network_size: 200
       methods:
