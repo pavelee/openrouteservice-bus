@@ -85,15 +85,15 @@ def process_osm_file(input_file, output_file):
                     # 171028660 - czarnomorksa zakret
                     # 206528330 - rezedowa, 402
                     # 114895531 - Wyszczółki 331
-                    if self.current_way in ['506254774', '171028660', '491365793', '206528330', '114895531'] and k == 'highway':
-                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
-                        return 
+                    # if self.current_way in ['506254774', '491365793', '206528330', '114895531'] and k == 'highway':
+                    #     self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                    #     return 
 
                     # cholera jasna problem z remontami!
                     # Aleja Niepodległości! 
                     if self.current_way in ['331762058', '952058010', '116931784', '187536173'] and k == 'oneway':
                         return
-                        # self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
                     
                     # NOWY ŚWIAT KURCZAKI
                     # if self.current_way in ['24384574', '306458016', '137020852', '137020852', '1111601198', '882352736'] and k == 'access' and v == 'private':
@@ -102,6 +102,10 @@ def process_osm_file(input_file, output_file):
 
                     # Skip access=private tags
                     if k == 'access' and v == 'private':
+                        self.is_private = True
+                        return  # Skip writing this tag
+
+                    if k == 'access' and v == 'no':
                         self.is_private = True
                         return  # Skip writing this tag
                     
