@@ -94,6 +94,10 @@ def process_osm_file(input_file, output_file):
                     if self.current_way in ['331762058', '952058010', '116931784', '187536173'] and k == 'oneway':
                         return
                         self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+
+                    # zablokowanie Zagłoby aby poprawić cholerny 187
+                    if self.current_way in ['33276900']:
+                        return
                     
                     # NOWY ŚWIAT KURCZAKI
                     # if self.current_way in ['24384574', '306458016', '137020852', '137020852', '1111601198', '882352736'] and k == 'access' and v == 'private':
