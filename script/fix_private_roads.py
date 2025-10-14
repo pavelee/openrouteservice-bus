@@ -9,8 +9,11 @@ import os
 import time
 from lxml import etree
 
-def process_osm_file(input_file, output_file):
+def process_osm_file(input_file, output_file, skip_relations=None):
     """Process OSM file using streaming parsing to ensure valid XML output."""
+    
+    if skip_relations is None:
+        skip_relations = []
     
     # Check if input file exists
     if not os.path.isfile(input_file):
@@ -41,11 +44,18 @@ def process_osm_file(input_file, output_file):
             def __init__(self, output_file):
                 self.output_file = output_file
                 self.current_way = None
+                self.current_relation = None
                 self.in_way = False
+                self.in_relation = False
                 self.is_private = False
                 self.is_residential = False
                 self.modified_count = 0
+                self.skipped_relations = 0
                 self.depth = 0
+                
+                # 1963216 - zakręt w lewo w piękną (obok sejmu) np. 131
+                # Lista relacji do pominięcia - domyślnie 1963216 + dodatkowe z parametru
+                self.skip_relations = ['1963216'] + skip_relations
                 
                 # Open output file
                 self.out = open(output_file, 'wb')
@@ -76,6 +86,23 @@ def process_osm_file(input_file, output_file):
                         self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
                     self.out.write(b'>\n')
                 
+                # Handle relation elements
+                elif name == 'relation':
+                    self.in_relation = True
+                    self.current_relation = attrs.get('id', '')
+                    
+                    # Check if this relation should be skipped
+                    if self.current_relation in self.skip_relations:
+                        print(f"Skipping relation ID: {self.current_relation}")
+                        self.skipped_relations += 1
+                        return  # Skip this relation entirely
+                    
+                    # Write relation opening tag with attributes
+                    self.out.write(f'  <{name}'.encode('utf-8'))
+                    for attr_name, attr_value in attrs.items():
+                        self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
+                    self.out.write(b'>\n')
+                
                 # Handle tags within ways
                 elif self.in_way and name == 'tag':
                     k = attrs.get('k', '')
@@ -99,6 +126,10 @@ def process_osm_file(input_file, output_file):
                     if self.current_way in ['33276900']:
                         return
                     
+                    # zablokowanie wiejskiej - 131
+                    if self.current_way in ['888011097', '174143991', '386852929']:
+                        return
+
                     # NOWY ŚWIAT KURCZAKI
                     # if self.current_way in ['24384574', '306458016', '137020852', '137020852', '1111601198', '882352736'] and k == 'access' and v == 'private':
                     #     self.is_private = True
@@ -135,6 +166,30 @@ def process_osm_file(input_file, output_file):
                         self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
                     self.out.write(b'/>\n')
                 
+                # Handle tags within relations
+                elif self.in_relation and name == 'tag':
+                    # Skip all tags for skipped relations
+                    if self.current_relation in self.skip_relations:
+                        return
+                    
+                    # Write relation tags normally
+                    self.out.write(f'    <{name}'.encode('utf-8'))
+                    for attr_name, attr_value in attrs.items():
+                        self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
+                    self.out.write(b'/>\n')
+                
+                # Handle members within relations
+                elif self.in_relation and name == 'member':
+                    # Skip all members for skipped relations
+                    if self.current_relation in self.skip_relations:
+                        return
+                    
+                    # Write relation members normally
+                    self.out.write(f'    <{name}'.encode('utf-8'))
+                    for attr_name, attr_value in attrs.items():
+                        self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
+                    self.out.write(b'/>\n')
+                
                 # Handle nd references within ways
                 elif self.in_way and name == 'nd':
                     self.out.write(f'    <{name}'.encode('utf-8'))
@@ -160,12 +215,22 @@ def process_osm_file(input_file, output_file):
                     if self.is_private or self.is_residential:
                         self.modified_count += 1
                 
+                # Handle relation closing
+                elif name == 'relation' and self.in_relation:
+                    self.in_relation = False
+                    
+                    # Skip closing tag for skipped relations
+                    if self.current_relation in self.skip_relations:
+                        return
+                    
+                    self.out.write(b'  </relation>\n')
+                
                 # Handle root element
                 elif self.depth == 1:
                     self.out.write(f'</{name}>'.encode('utf-8'))
                 
-                # Handle other elements (not way, nd, or tag)
-                elif not (self.in_way and (name == 'nd' or name == 'tag')):
+                # Handle other elements (not way, nd, tag, member)
+                elif not (self.in_way and (name == 'nd' or name == 'tag')) and not (self.in_relation and (name == 'member' or name == 'tag')):
                     indent = '  ' * (self.depth - 1)
                     self.out.write(f'{indent}</{name}>\n'.encode('utf-8'))
                 
@@ -195,6 +260,10 @@ def process_osm_file(input_file, output_file):
         
         # Create our handler
         handler = OSMHandler(output_file)
+        
+        # Print information about relations to be skipped
+        if handler.skip_relations:
+            print(f"Relations to be skipped: {', '.join(handler.skip_relations)}")
         
         # Use iterparse for streaming processing
         print("Starting XML parsing...")
@@ -241,6 +310,7 @@ def process_osm_file(input_file, output_file):
         print("Statistics:")
         print(f"  - Total elements processed: {total_elements:,}")
         print(f"  - Ways modified: {modified_ways}")
+        print(f"  - Relations skipped: {handler.skipped_relations}")
         print(f"  - Processing time: {elapsed_time:.2f} seconds")
         print(f"  - Processing speed: {total_elements / elapsed_time:.2f} elements/second")
         print(f"  - Input file size: {file_size / (1024*1024):.2f} MB")
@@ -256,13 +326,21 @@ def process_osm_file(input_file, output_file):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <input_osm_file> <output_osm_file>")
+        print(f"Usage: {sys.argv[0]} <input_osm_file> <output_osm_file> [relation_id1,relation_id2,...]")
+        print("Example: python fix_private_roads.py input.osm output.osm 1963216,123456,789012")
+        print("The script will always skip relation 1963216 by default")
         sys.exit(1)
     
     input_file = sys.argv[1]
     output_file = sys.argv[2]
     
-    if process_osm_file(input_file, output_file):
+    # Parse additional relations to skip
+    additional_skip_relations = []
+    if len(sys.argv) > 3:
+        relation_ids = sys.argv[3].split(',')
+        additional_skip_relations = [rid.strip() for rid in relation_ids if rid.strip()]
+    
+    if process_osm_file(input_file, output_file, additional_skip_relations):
         print("OSM file processing completed successfully.")
     else:
         print("OSM file processing failed.")
