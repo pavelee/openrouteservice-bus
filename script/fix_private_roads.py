@@ -118,9 +118,9 @@ def process_osm_file(input_file, output_file, skip_relations=None):
 
                     # cholera jasna problem z remontami!
                     # Aleja Niepodległości! 
-                    if self.current_way in ['331762058', '952058010', '116931784', '187536173'] and k == 'oneway':
-                        return
-                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                    # if self.current_way in ['331762058', '952058010', '116931784', '187536173'] and k == 'oneway':
+                    #     return
+                    #     self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
 
                     # zablokowanie Zagłoby aby poprawić cholerny 187
                     if self.current_way in ['33276900']:
@@ -158,7 +158,9 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     # change highway=construction to highway=secondary
                     if k == 'highway' and v == 'construction':
                         self.out.write(f'    <{name} k="highway" v="secondary"/>\n'.encode('utf-8'))
-                        return    
+                        return   
+                    if k == 'construction':
+                        return  # Skip writing this tag  
                     
                     # Write other tags normally
                     self.out.write(f'    <{name}'.encode('utf-8'))
