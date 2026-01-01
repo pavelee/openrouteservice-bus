@@ -112,9 +112,9 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     # 171028660 - czarnomorksa zakret
                     # 206528330 - rezedowa, 402
                     # 114895531 - Wyszczółki 331
-                    # if self.current_way in ['506254774', '491365793', '206528330', '114895531'] and k == 'highway':
-                    #     self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
-                    #     return 
+                    if self.current_way in ['506254774', '491365793', '206528330', '114895531'] and k == 'highway':
+                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                        return 
 
                     # cholera jasna problem z remontami!
                     # Aleja Niepodległości! 
