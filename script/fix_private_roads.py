@@ -129,6 +129,10 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     # zablokowanie wiejskiej - 131
                     if self.current_way in ['888011097', '174143991', '386852929']:
                         return
+                    
+                    # zablokowanie Generała Michała Tokarzewskiego-Karaszewicza aby autobus 128 jechał Królewską
+                    if self.current_way in ['860371908']:
+                        return
 
                     # NOWY ŚWIAT KURCZAKI
                     # if self.current_way in ['24384574', '306458016', '137020852', '137020852', '1111601198', '882352736'] and k == 'access' and v == 'private':
