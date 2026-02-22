@@ -5,6 +5,9 @@
 Nowy zautomatyzowany skrypt który wykonuje cały proces aktualizacji mapy:
 
 ```bash
+# uruchomienie środowiska python
+source env/bin/activate
+
 # Podstawowe użycie - wykonuje cały proces automatycznie
 ./update_osm.py
 
