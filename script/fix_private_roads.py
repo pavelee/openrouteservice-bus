@@ -126,6 +126,14 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     if self.current_way in ['33276900']:
                         return
                     
+                    # zablokowanie ZŁOTA bo cholerny 504
+                    if self.current_way in ['308031464']:
+                        return
+
+                    # zablokowanie Kościuszki bo cholerny 817
+                    if self.current_way in ['341151409']:
+                        return
+                    
                     # zablokowanie wiejskiej - 131
                     if self.current_way in ['888011097', '174143991', '386852929']:
                         return
