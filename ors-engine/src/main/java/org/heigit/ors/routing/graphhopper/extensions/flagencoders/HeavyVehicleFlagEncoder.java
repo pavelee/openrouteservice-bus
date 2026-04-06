@@ -90,6 +90,9 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
 
         blockByDefaultBarriers.add("sump_buster");
 
+        // Bus traps are designed to let buses through
+        passByDefaultBarriers.add("bus_trap");
+
         hgvAccess.addAll(Arrays.asList("hgv", VAL_GOODS, "bus", VAL_AGRICULTURAL, VAL_FORESTRY, "delivery"));
         busAccess.addAll(Arrays.asList("bus", "psv", "public_transport"));
 
@@ -215,27 +218,11 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             return EncodingManager.Access.CAN_SKIP;
         }
 
-        // Pomijamy drogi z nawierzchnią paving_stone (kostka brukowa)
-        String surfaceTag = way.getTag("surface");
-        if (surfaceTag != null) {
-            if ("paving_stone".equals(surfaceTag)) {
-                return EncodingManager.Access.CAN_SKIP;
-            }
-        }
-
         // Obsługa tagu routing:ztm - specjalny tag do sterowania trasami ZTM
         String ztmRouteTag = way.getTag("routing:ztm");
         if (ztmRouteTag != null) {
             if ("no".equals(ztmRouteTag)) {
                 return EncodingManager.Access.CAN_SKIP;
-            }
-        }
-
-        // Obsługa oneway:psv - autobusy mogą jechać pod prąd na drogach jednokierunkowych
-        String oneWayPsv = way.getTag("oneway:psv");
-        if (oneWayPsv != null) {
-            if ("no".equals(oneWayPsv)) {
-                return EncodingManager.Access.WAY;
             }
         }
 
@@ -291,7 +278,7 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
         if (maxwidth != null) {
             try {
                 double mwv = Double.parseDouble(maxwidth);
-                if (mwv < 2.0)
+                if (mwv < 2.5)
                     return EncodingManager.Access.CAN_SKIP;
             } catch (Exception ex) {
                 // do nothing
@@ -321,31 +308,64 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             return speed * 1.6;
         }
 
-        // Bonusy dla głównych dróg - preferowane dla autobusów
+        // Autobusy miejskie - niewielkie bonusy dla dróg szybkiego ruchu,
+        // ale NIE karzemy dróg osiedlowych bo autobusy regularnie nimi jeżdżą
         if ("motorway".equals(highway) || "motorway_link".equals(highway)) {
-            return speed * 1.4;
+            return speed * 1.2;
         } else if ("trunk".equals(highway) || "trunk_link".equals(highway)) {
-            return speed * 1.3;
-        } else if ("primary".equals(highway) || "primary_link".equals(highway)) {
-            return speed * 1.25;
-        } else if ("secondary".equals(highway) || "secondary_link".equals(highway)) {
             return speed * 1.15;
-        } else if ("tertiary".equals(highway) || "tertiary_link".equals(highway)) {
+        } else if ("primary".equals(highway) || "primary_link".equals(highway)) {
+            return speed * 1.1;
+        } else if ("secondary".equals(highway) || "secondary_link".equals(highway)) {
             return speed * 1.05;
+        } else if ("tertiary".equals(highway) || "tertiary_link".equals(highway)) {
+            return speed * 1.0;
         }
 
-        // Kary dla dróg problemowych dla autobusów
+        // Drogi osiedlowe - bez kary, autobusy regularnie nimi jeżdżą
         else if ("residential".equals(highway)) {
-            return speed * 0.5;
+            return speed * 1.0;
         } else if ("unclassified".equals(highway)) {
-            return speed * 0.7;
+            return speed * 1.0;
         } else if ("service".equals(highway)) {
-            return speed * 0.3;
+            return speed * 0.7;
         } else if ("living_street".equals(highway)) {
-            return speed * 0.2;
+            return speed * 0.5;
         }
 
         return speed;
+    }
+
+    /**
+     * Override oneway detection for bus/PSV exemptions.
+     * Buses can go against one-way when oneway:psv=no, oneway:bus=no,
+     * or when bus:backward/psv:backward is explicitly allowed on a forward oneway.
+     */
+    @Override
+    protected boolean isOneway(ReaderWay way) {
+        // PSV/bus exempt from one-way restriction
+        if (way.hasTag("oneway:psv", "no") || way.hasTag("oneway:bus", "no")) {
+            return false;
+        }
+
+        if (super.isOneway(way)) {
+            boolean isReverseOneway = way.hasTag("oneway", "-1");
+
+            if (isReverseOneway) {
+                // Reverse oneway: if bus/psv has forward access → bidirectional
+                if (way.hasTag(new ArrayList<>(forwardKeys), intendedValues)) {
+                    return false;
+                }
+            } else {
+                // Forward oneway: if bus/psv has backward access → bidirectional
+                if (way.hasTag(new ArrayList<>(backwardKeys), intendedValues)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        return false;
     }
 
     @Override
@@ -389,24 +409,25 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
                     case "primary_link":
                     case "secondary":
                     case "secondary_link":
-                        weightToPrioMap.put(100d, PriorityCode.PREFER.getValue());
+                        // Autobusy regularnie jeżdżą głównymi drogami - najwyższy priorytet
+                        weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
                         break;
                     case "tertiary":
                     case "tertiary_link":
-                        weightToPrioMap.put(100d, PriorityCode.UNCHANGED.getValue());
+                        weightToPrioMap.put(100d, PriorityCode.VERY_NICE.getValue());
                         break;
                     case "residential":
+                    case "unclassified":
+                        // Drogi osiedlowe - dostępne ale mniej preferowane niż główne
+                        weightToPrioMap.put(100d, PriorityCode.PREFER.getValue());
+                        break;
                     case "service":
                     case "road":
-                    case "unclassified":
-                        if (isValidSpeed(maxSpeed) && maxSpeed <= 30) {
-                            weightToPrioMap.put(120d, PriorityCode.REACH_DEST.getValue());
-                        } else {
-                            weightToPrioMap.put(100d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
-                        }
+                        // Service - mocno unikaj, chyba że to jedyna opcja
+                        weightToPrioMap.put(100d, PriorityCode.REACH_DEST.getValue());
                         break;
                     case "living_street":
-                        weightToPrioMap.put(100d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
+                        weightToPrioMap.put(100d, PriorityCode.AVOID_AT_ALL_COSTS.getValue());
                         break;
                     case VAL_TRACK:
                         weightToPrioMap.put(100d, PriorityCode.REACH_DEST.getValue());
@@ -419,13 +440,11 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
                 weightToPrioMap.put(100d, PriorityCode.UNCHANGED.getValue());
             }
 
-            if (isValidSpeed(maxSpeed)) {
-                // We assume that the given road segment goes through a settlement.
-                if (maxSpeed <= 40)
-                    weightToPrioMap.put(110d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
-                else if (maxSpeed <= 50)
-                    weightToPrioMap.put(110d, PriorityCode.UNCHANGED.getValue());
-            }
+            // UWAGA: usunięto override priorytetów bazujący na maxspeed.
+            // W Warszawie prawie wszystkie drogi mają maxspeed <= 50, więc ten blok
+            // nadpisywał (klucz 110 > 100) priorytety highway-based, czyniąc
+            // np. primary z maxspeed=50 → UNCHANGED(4), a residential bez maxspeed → PREFER(5).
+            // Dla autobusów klasa drogi jest ważniejsza niż limit prędkości.
         }
     }
 

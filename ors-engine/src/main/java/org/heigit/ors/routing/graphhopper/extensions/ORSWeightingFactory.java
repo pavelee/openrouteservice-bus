@@ -100,7 +100,7 @@ public class ORSWeightingFactory implements WeightingFactory {
             queryCustomModel = CustomModel.merge(customProfile.getCustomModel(), queryCustomModel);
             weighting = CustomModelParser.createWeighting(encoder, this.encodingManager, turnCostProvider, queryCustomModel);
         } else if ("shortest".equalsIgnoreCase(weightingStr)) {
-            weighting = new ShortestWeighting(encoder, turnCostProvider);
+            weighting = new ORSShortestWeighting(encoder, turnCostProvider);
         } else {
             weighting = new ORSFastestWeighting(encoder, hints, turnCostProvider);
         }

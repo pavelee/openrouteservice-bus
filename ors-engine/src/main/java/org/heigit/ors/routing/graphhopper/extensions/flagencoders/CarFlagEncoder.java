@@ -82,6 +82,9 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
         // blockByDefaultBarriers.add("bus_trap");
         blockByDefaultBarriers.add("sump_buster");
 
+        // Bus traps are designed to let buses through
+        passByDefaultBarriers.add("bus_trap");
+
         // Inicjalizacja kolekcji dla autobusów
         // busAccess - lista tagów dostępu specyficznych dla autobusów
         // Pozwala autobusowi korzystać z dróg ograniczonych dla samochodów osobowych
@@ -129,14 +132,6 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
             return EncodingManager.Access.CAN_SKIP;
         }
 
-        // paving_stone
-        String surfaceTag = way.getTag("surface");
-        if (surfaceTag != null) {
-            if ("paving_stone".equals(surfaceTag)) {
-                return EncodingManager.Access.CAN_SKIP;
-            }
-        }
-
         // bus ?
         String ztmRouteTag = way.getTag("routing:ztm");
         if (ztmRouteTag != null) {
@@ -146,14 +141,6 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
             // if ("yes".equals(ztmRouteTag)) {
             //     return EncodingManager.Access.WAY;
             // }
-        }
-
-        // oneway PSV WE CAN GO THERE!
-        String oneWayPsv = way.getTag("oneway:psv");
-        if (oneWayPsv != null) {
-            if ("no".equals(oneWayPsv)) {
-                return EncodingManager.Access.WAY;
-            }
         }
 
         // we ommit ways to parking_aisle
@@ -214,7 +201,7 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
         if (maxwidth != null) {
             try {
                 double mwv = Double.parseDouble(maxwidth);
-                if (mwv < 2.0)
+                if (mwv < 2.5)
                     return EncodingManager.Access.CAN_SKIP;
             } catch (Exception ex) {
                 // ignore
@@ -243,31 +230,64 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
             return speed * 1.6; // 60% bonus dla dróg dedykowanych dla autobusów
         }
         
-        // Bonusy dla głównych dróg - preferowane dla autobusów
+        // Autobusy miejskie - niewielkie bonusy dla dróg szybkiego ruchu,
+        // ale NIE karzemy dróg osiedlowych bo autobusy regularnie nimi jeżdżą
         if ("motorway".equals(highway) || "motorway_link".equals(highway)) {
-            return speed * 1.4; // 40% bonus dla autostrad
+            return speed * 1.2;
         } else if ("trunk".equals(highway) || "trunk_link".equals(highway)) {
-            return speed * 1.3; // 30% bonus dla dróg ekspresowych
+            return speed * 1.15;
         } else if ("primary".equals(highway) || "primary_link".equals(highway)) {
-            return speed * 1.25; // 25% bonus dla dróg głównych
+            return speed * 1.1;
         } else if ("secondary".equals(highway) || "secondary_link".equals(highway)) {
-            return speed * 1.15; // 15% bonus dla dróg drugorzędnych
+            return speed * 1.05;
         } else if ("tertiary".equals(highway) || "tertiary_link".equals(highway)) {
-            return speed * 1.05; // 5% bonus dla dróg lokalnych
+            return speed * 1.0;
         }
         
-        // Kary dla dróg problemowych dla autobusów
+        // Drogi osiedlowe - bez kary, autobusy regularnie nimi jeżdżą
         else if ("residential".equals(highway)) {
-            return speed * 0.5; // 50% kara dla ulic mieszkaniowych - silnie unikaj
+            return speed * 1.0;
         } else if ("unclassified".equals(highway)) {
-            return speed * 0.7; // 30% kara dla nieklasyfikowanych
+            return speed * 1.0;
         } else if ("service".equals(highway)) {
-            return speed * 0.3; // 70% kara dla dróg serwisowych - bardzo unikaj
+            return speed * 0.7;
         } else if ("living_street".equals(highway)) {
-            return speed * 0.2; // 80% kara dla stref zamieszkania - prawie wykluczaj
+            return speed * 0.5;
         }
         
         return speed;
+    }
+
+    /**
+     * Override oneway detection for bus/PSV exemptions.
+     * Buses can go against one-way when oneway:psv=no, oneway:bus=no,
+     * or when bus:backward/psv:backward is explicitly allowed on a forward oneway.
+     */
+    @Override
+    protected boolean isOneway(ReaderWay way) {
+        // PSV/bus exempt from one-way restriction
+        if (way.hasTag("oneway:psv", "no") || way.hasTag("oneway:bus", "no")) {
+            return false;
+        }
+
+        if (super.isOneway(way)) {
+            boolean isReverseOneway = way.hasTag("oneway", "-1");
+
+            if (isReverseOneway) {
+                // Reverse oneway: if bus/psv has forward access → bidirectional
+                if (way.hasTag(new ArrayList<>(forwardKeys), intendedValues)) {
+                    return false;
+                }
+            } else {
+                // Forward oneway: if bus/psv has backward access → bidirectional
+                if (way.hasTag(new ArrayList<>(backwardKeys), intendedValues)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        return false;
     }
 
     /**

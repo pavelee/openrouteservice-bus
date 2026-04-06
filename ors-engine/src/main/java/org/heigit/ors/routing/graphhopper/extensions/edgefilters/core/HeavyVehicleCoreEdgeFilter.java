@@ -30,8 +30,14 @@ public class HeavyVehicleCoreEdgeFilter implements EdgeFilter {
 
     @Override
     public final boolean accept(EdgeIteratorState iter) {
-        return !storage.hasEdgeRestriction(EdgeIteratorStateHelper.getOriginalEdge(iter));
-
+        int edgeId = EdgeIteratorStateHelper.getOriginalEdge(iter);
+        int vt = storage.getEdgeVehicleType(edgeId);
+        // Only put edges with BUS-specific restrictions into the core.
+        // Edges restricted for HGV only (but not BUS) should be contractable.
+        if (vt != 0 && (vt & org.heigit.ors.routing.graphhopper.extensions.HeavyVehicleAttributes.BUS) != 0) {
+            return false; // BUS restricted → put in core for flexible routing
+        }
+        return true;
     }
 
 }

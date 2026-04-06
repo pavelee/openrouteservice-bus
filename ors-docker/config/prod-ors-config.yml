@@ -16,8 +16,8 @@ ors:
         build:
           encoder_options:
             turn_costs: false  # Disable turn costs completely
-            # block_fords: false
-            # use_acceleration: false  # Disable acceleration calculations
+            block_fords: false
+            block_barriers: false
             enable_custom_models: true  # WŁĄCZAMY obsługę custom models
         service:
           force_turn_costs: false
