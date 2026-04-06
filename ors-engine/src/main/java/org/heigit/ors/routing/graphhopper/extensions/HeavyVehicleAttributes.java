@@ -36,6 +36,8 @@ public class HeavyVehicleAttributes {
             return HeavyVehicleAttributes.HGV;
         } else if ("bus".equalsIgnoreCase(value)) {
             return HeavyVehicleAttributes.BUS;
+        } else if ("psv".equalsIgnoreCase(value)) {
+            return HeavyVehicleAttributes.BUS;
         } else if ("agricultural".equalsIgnoreCase(value)) {
             return HeavyVehicleAttributes.AGRICULTURE;
         } else if ("forestry".equalsIgnoreCase(value)) {
