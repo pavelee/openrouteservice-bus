@@ -16,8 +16,8 @@ ors:
         build:
           encoder_options:
             turn_costs: false  # Disable turn costs completely
-            block_fords: false
-            block_barriers: false
+            # block_fords: false
+            # use_acceleration: false  # Disable acceleration calculations
             enable_custom_models: true  # WŁĄCZAMY obsługę custom models
         service:
           force_turn_costs: false
@@ -25,6 +25,28 @@ ors:
           # Use simple weighting that only considers distance
           weighting: shortest
           allow_custom_models: true  # WŁĄCZAMY custom models w service
+      driving-hgv:
+        enabled: true
+        encoder_name: driving-hgv
+        build:
+          encoder_options:
+            turn_costs: false
+            block_fords: false
+            block_barriers: false
+            use_acceleration: false
+            enable_custom_models: true
+          preparation:
+            min_network_size: 200
+          ext_storages:
+            WayCategory:
+            HeavyVehicle:
+              restrictions: true
+            WaySurfaceType:
+        service:
+          force_turn_costs: false
+          u_turn_costs: 5000
+          weighting: shortest
+          allow_custom_models: true
 
 # wtp_ln=128
 
