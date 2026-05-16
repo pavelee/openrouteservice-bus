@@ -167,6 +167,14 @@ rm -f "${XML_RAW}"
 step "4/6 Build grafów (ors-builder)"
 mkdir -p "${GRAPHS_STAGING}"
 
+# Builder dzieli obraz z ors-app (lokalny fork). Jeśli image nie istnieje,
+# zbudujmy go zawczasu — inaczej `up -d` zrobi to "po cichu" i timeout
+# pollingu zdrowia może źle zinterpretować długi czas budowania obrazu.
+if ! docker image inspect local/openrouteservice:v9.4.0 >/dev/null 2>&1; then
+    log "Obraz local/openrouteservice:v9.4.0 nie istnieje — buduję..."
+    docker compose -f "${COMPOSE_FILE}" --profile builder build ors-builder
+fi
+
 log "Start ors-builder przez profil 'builder'..."
 docker compose -f "${COMPOSE_FILE}" --profile builder up -d ors-builder
 

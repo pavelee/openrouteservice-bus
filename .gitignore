@@ -29,6 +29,11 @@ ors-config*
 ors-docker/files
 !ors-docker/graphs
 
+# Katalogi tymczasowe refresh-ors.sh — nie commitujemy ich
+ors-docker/graphs_staging/
+ors-docker/graphs_old/
+ors-docker/graphs.failed/
+
 envs/
 ors-config-repo/
 

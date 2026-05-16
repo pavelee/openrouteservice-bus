@@ -82,15 +82,21 @@ services:
   ors-builder:
     profiles: ["builder"]
     platform: linux/amd64
-    image: openrouteservice/openrouteservice:v9.4.0
+    # KRYTYCZNE: builder musi używać tego samego obrazu i configu co ors-app,
+    # inaczej graf zapisany przez buildera ma inny zestaw EncodedValue niż
+    # ors-app oczekuje przy załadowaniu → "Encoded values do not match".
+    # Lokalny fork (./Dockerfile) modyfikuje encoder vs upstream.
+    build:
+      context: ./
+    image: local/openrouteservice:v9.4.0
     container_name: ors-builder
     volumes:
       - ./ors-docker:/home/ors
     environment:
       REBUILD_GRAPHS: True
       CONTAINER_LOG_LEVEL: INFO
-      ORS_CONFIG_LOCATION: /home/ors/config/prod-ors-config.yml
-      # Nadpisania ścieżek — ten sam config co prod, ale piszemy w staging
+      ORS_CONFIG_LOCATION: /home/ors/config/my-ors-config.yml
+      # Nadpisania ścieżek — ten sam config co ors-app, ale piszemy w staging
       ors.engine.profile_default.graph_path: /home/ors/graphs_staging
       ors.engine.profile_default.build.source_file: /home/ors/files/staging/mazowieckie.osm
       XMS: 1g
