@@ -25,7 +25,7 @@ services:
       #- ./logs:/home/ors/logs  # Mount logs directory individually
       #- ./files:/home/ors/files  # Mount files directory individually
     environment:
-      REBUILD_GRAPHS: True  # Set to True to rebuild graphs on container start.
+      # REBUILD_GRAPHS: False  # Set to True to rebuild graphs on container start.
       CONTAINER_LOG_LEVEL: INFO  # Log level for the container. Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
       # If you don't want the default ors-config.yml you can specify a custom file name, that should match the file in
       # your 'config' volume mount.
@@ -72,6 +72,30 @@ services:
     #  timeout: 2s
     #  retries: 3
     #  disable: false
+
+  # ----------------- Offline graph builder (profile: builder) ----------- #
+  # Uruchamiany przez script/refresh-ors.sh. Buduje grafy do graphs_staging/
+  # bez ruszania live'owych graphs/ — produkcyjne ors-app serwuje przez ten
+  # czas stare grafy. Nie wystawia portu na hoście (poll przez `docker exec`).
+  # Współdzieli ten sam wolumen z ors-app, więc po buildzie wystarczy
+  # zamiana katalogów na hoście i restart ors-app.
+  ors-builder:
+    profiles: ["builder"]
+    platform: linux/amd64
+    image: openrouteservice/openrouteservice:v9.4.0
+    container_name: ors-builder
+    volumes:
+      - ./ors-docker:/home/ors
+    environment:
+      REBUILD_GRAPHS: True
+      CONTAINER_LOG_LEVEL: INFO
+      ORS_CONFIG_LOCATION: /home/ors/config/prod-ors-config.yml
+      # Nadpisania ścieżek — ten sam config co prod, ale piszemy w staging
+      ors.engine.profile_default.graph_path: /home/ors/graphs_staging
+      ors.engine.profile_default.build.source_file: /home/ors/files/staging/mazowieckie.osm
+      XMS: 1g
+      XMX: 4g
+      ADDITIONAL_JAVA_OPTS: ""
 
 # ----------------- Docker Volumes configuration ------------------- #
 # Define the Docker managed volumes for the ORS application. For more info on Docker Volumes see https://docs.docker.com/compose/compose-file/07-volumes/

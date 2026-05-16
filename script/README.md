@@ -1,8 +1,35 @@
 ## Skrypt modyfikacji mapy OSM
 
-### Automatyczna aktualizacja mapy (ZALECANE)
+### Pełen refresh produkcji (ZALECANE) — `refresh-ors.sh`
 
-Nowy zautomatyzowany skrypt który wykonuje cały proces aktualizacji mapy:
+Jeden skrypt który robi wszystko: pobiera świeży PBF, konwertuje, poprawia
+prywatne drogi, **buduje nowe grafy ORS w izolowanym kontenerze** (`ors-builder`
+z profilu compose), robi atomic swap katalogów i restartuje `ors-app`. Stary
+ors-app serwuje przez cały czas builda — downtime tylko podczas finalnego
+restartu (~30–60 s).
+
+```bash
+# Uruchomienie (z dowolnego cwd — skrypt sam ustala ścieżki)
+./script/refresh-ors.sh
+```
+
+Zachowanie:
+- Lock w `/tmp/traska-refresh-ors.lock` — dwie instancje równolegle nie pójdą.
+- Pliki staging w `ors-docker/files/staging/` i grafy w `ors-docker/graphs_staging/`.
+- Po sukcesie: czyści staging + `graphs_old`, kasuje `mazowieckie.osm.prev`.
+- Po błędzie **po swapie**: automatyczny rollback do `graphs_old` i `.prev`, zostawia `graphs.failed` / `mazowieckie.osm.failed` do inspekcji.
+- Po błędzie **przed swapem**: rollbacka nie ma — produkcja nietknięta.
+
+Wymagania: `docker`, `wget`, lokalny venv pod `script/env/` (osmium + lxml).
+
+Czas: ~20–40 min (głównie build grafów). Można odpalić w tle:
+`nohup ./script/refresh-ors.sh > refresh.log 2>&1 &`.
+
+### Aktualizacja samego pliku XML — `update_osm.py`
+
+Skrypt który automatyzuje tylko fazę przygotowania danych OSM (bez buildu
+grafów i bez restartu kontenera). Przydatny gdy chcesz wymienić sam plik
+`mazowieckie.osm` ręcznie — pełen refresh produkcji robi `refresh-ors.sh`.
 
 ```bash
 # uruchomienie środowiska python
