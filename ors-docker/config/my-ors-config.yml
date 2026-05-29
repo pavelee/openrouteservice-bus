@@ -10,21 +10,22 @@ ors:
         # source_file: /home/ors/files/Warsaw.osm
         source_file: /home/ors/files/mazowieckie.osm
     profiles:
-      driving-car:
-        enabled: true
-        encoder_name: driving-car
-        build:
-          encoder_options:
-            turn_costs: false  # Disable turn costs completely
-            # block_fords: false
-            # use_acceleration: false  # Disable acceleration calculations
-            enable_custom_models: true  # WŁĄCZAMY obsługę custom models
-        service:
-          force_turn_costs: false
-          u_turn_costs: 5000  # Or set very high to effectively disable U-turns
-          # Use simple weighting that only considers distance
-          weighting: shortest
-          allow_custom_models: true  # WŁĄCZAMY custom models w service
+      # Wyłaczony profil poniewaz przechodzimy na driving-hgv
+      # driving-car:
+      #   enabled: true
+      #   encoder_name: driving-car
+      #   build:
+      #     encoder_options:
+      #       turn_costs: false  # Disable turn costs completely
+      #       # block_fords: false
+      #       # use_acceleration: false  # Disable acceleration calculations
+      #       enable_custom_models: true  # WŁĄCZAMY obsługę custom models
+      #   service:
+      #     force_turn_costs: false
+      #     u_turn_costs: 5000  # Or set very high to effectively disable U-turns
+      #     # Use simple weighting that only considers distance
+      #     weighting: shortest
+      #     allow_custom_models: true  # WŁĄCZAMY custom models w service
       driving-hgv:
         enabled: true
         encoder_name: driving-hgv
