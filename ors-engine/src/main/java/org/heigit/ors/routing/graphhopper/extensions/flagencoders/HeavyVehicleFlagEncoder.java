@@ -274,16 +274,8 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
         if (isBlockFords() && ("ford".equals(highwayValue) || way.hasTag("ford")) && !carsAllowed)
             return EncodingManager.Access.CAN_SKIP;
 
-        String maxwidth = way.getTag("maxwidth");
-        if (maxwidth != null) {
-            try {
-                double mwv = Double.parseDouble(maxwidth);
-                if (mwv < 2.5)
-                    return EncodingManager.Access.CAN_SKIP;
-            } catch (Exception ex) {
-                // do nothing
-            }
-        }
+        // maxwidth filter przeniesiony do options.profile_params.restrictions.width
+        // w web/app/_service/directions/orsBusCustomModel.ts (BUS_RESTRICTIONS)
 
         if (getConditionalTagInspector().isPermittedWayConditionallyRestricted(way))
             return EncodingManager.Access.CAN_SKIP;
@@ -292,45 +284,24 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
     }
 
     /**
-     * Modyfikacja prędkości dla autobusów miejskich - preferuj główne drogi
+     * Mnożniki prędkości highway-based przeniesione do custom_model po stronie klienta —
+     * patrz BUS_CUSTOM_MODEL.speed w orsBusCustomModel.ts.
+     *
+     * Bonusy dla bus_guideway (1.8x) i bus/psv=designated (1.6x) zostają tu do czasu
+     * fazy 3 refaktoru (rejestracja BooleanEncodedValue bus_priority), bo custom_model
+     * nie umie warunkować na tych tagach bez własnego EncodedValue.
      */
     @Override
     protected double getSpeed(ReaderWay way) {
         String highway = way.getTag(KEY_HIGHWAY);
         double speed = super.getSpeed(way);
 
-        // Najwyższe bonusy dla infrastruktury autobusowej
         if ("bus_guideway".equals(highway) || way.hasTag("bus_guideway", "yes")) {
             return speed * 1.8;
         }
 
         if (way.hasTag("bus", VAL_DESIGNATED) || way.hasTag("psv", VAL_DESIGNATED)) {
             return speed * 1.6;
-        }
-
-        // Autobusy miejskie - niewielkie bonusy dla dróg szybkiego ruchu,
-        // ale NIE karzemy dróg osiedlowych bo autobusy regularnie nimi jeżdżą
-        if ("motorway".equals(highway) || "motorway_link".equals(highway)) {
-            return speed * 1.2;
-        } else if ("trunk".equals(highway) || "trunk_link".equals(highway)) {
-            return speed * 1.15;
-        } else if ("primary".equals(highway) || "primary_link".equals(highway)) {
-            return speed * 1.1;
-        } else if ("secondary".equals(highway) || "secondary_link".equals(highway)) {
-            return speed * 1.05;
-        } else if ("tertiary".equals(highway) || "tertiary_link".equals(highway)) {
-            return speed * 1.0;
-        }
-
-        // Drogi osiedlowe - bez kary, autobusy regularnie nimi jeżdżą
-        else if ("residential".equals(highway)) {
-            return speed * 1.0;
-        } else if ("unclassified".equals(highway)) {
-            return speed * 1.0;
-        } else if ("service".equals(highway)) {
-            return speed * 0.7;
-        } else if ("living_street".equals(highway)) {
-            return speed * 0.5;
         }
 
         return speed;
@@ -386,66 +357,13 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
     }
 
     /**
-     * @param weightToPrioMap associate a weight with every priority. This sorted map allows
-     *                        subclasses to 'insert' more important priorities as well as
-     *                        overwrite determined priorities.
+     * Highway-based priorytety przeniesione do BUS_CUSTOM_MODEL.priority w orsBusCustomModel.ts.
+     * Tutaj wszystkie krawędzie dostają BEST jako neutralny baseline — custom_model
+     * nakłada faktyczne preferencje per-request. Pozwala to tunować priorytety bez
+     * rebuildu grafu / kontenera ORS.
      */
-    protected void collect(ReaderWay way, TreeMap<Double, Integer> weightToPrioMap) { // Runge
-        if (way.hasTag("hgv", VAL_DESIGNATED) || (way.hasTag("access", VAL_DESIGNATED) && (way.hasTag(VAL_GOODS, "yes") || way.hasTag("hgv", "yes") || way.hasTag("bus", "yes") || way.hasTag(VAL_AGRICULTURAL, "yes") || way.hasTag(VAL_FORESTRY, "yes"))))
-            weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
-        else {
-            String highway = way.getTag(KEY_HIGHWAY);
-            double maxSpeed = getMaxSpeed(way);
-
-            if (!Helper.isEmpty(highway)) {
-                switch (highway) {
-                    case "motorway":
-                    case "motorway_link":
-                    case "trunk":
-                    case "trunk_link":
-                        weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
-                        break;
-                    case "primary":
-                    case "primary_link":
-                    case "secondary":
-                    case "secondary_link":
-                        // Autobusy regularnie jeżdżą głównymi drogami - najwyższy priorytet
-                        weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
-                        break;
-                    case "tertiary":
-                    case "tertiary_link":
-                        weightToPrioMap.put(100d, PriorityCode.VERY_NICE.getValue());
-                        break;
-                    case "residential":
-                    case "unclassified":
-                        // Drogi osiedlowe - dostępne ale mniej preferowane niż główne
-                        weightToPrioMap.put(100d, PriorityCode.PREFER.getValue());
-                        break;
-                    case "service":
-                    case "road":
-                        // Service - mocno unikaj, chyba że to jedyna opcja
-                        weightToPrioMap.put(100d, PriorityCode.REACH_DEST.getValue());
-                        break;
-                    case "living_street":
-                        weightToPrioMap.put(100d, PriorityCode.AVOID_AT_ALL_COSTS.getValue());
-                        break;
-                    case VAL_TRACK:
-                        weightToPrioMap.put(100d, PriorityCode.REACH_DEST.getValue());
-                        break;
-                    default:
-                        weightToPrioMap.put(40d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
-                        break;
-                }
-            } else {
-                weightToPrioMap.put(100d, PriorityCode.UNCHANGED.getValue());
-            }
-
-            // UWAGA: usunięto override priorytetów bazujący na maxspeed.
-            // W Warszawie prawie wszystkie drogi mają maxspeed <= 50, więc ten blok
-            // nadpisywał (klucz 110 > 100) priorytety highway-based, czyniąc
-            // np. primary z maxspeed=50 → UNCHANGED(4), a residential bez maxspeed → PREFER(5).
-            // Dla autobusów klasa drogi jest ważniejsza niż limit prędkości.
-        }
+    protected void collect(ReaderWay way, TreeMap<Double, Integer> weightToPrioMap) {
+        weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
     }
 
     @Override
