@@ -27,6 +27,7 @@ public class RoutingProfileType {
     public static final int DRIVING_ELECTRIC_CAR = 6;
     public static final int DRIVING_MOTORCYCLE = 7;
     public static final int DRIVING_TRAFFIC = 8;
+    public static final int DRIVING_BUS = 9;
 
     // CYCLING STUFF
     public static final int CYCLING_REGULAR = 10;
@@ -62,6 +63,7 @@ public class RoutingProfileType {
     public static boolean isDriving(int routePref) {
         return routePref == DRIVING_CAR
                 || routePref == DRIVING_HGV
+                || routePref == DRIVING_BUS
                 || routePref == DRIVING_ELECTRIC_CAR
                 || routePref == DRIVING_EMERGENCY
                 || routePref == DRIVING_MOTORCYCLE
@@ -113,6 +115,7 @@ public class RoutingProfileType {
             case DRIVING_CAR -> "driving-car";
             case DRIVING_ELECTRIC_CAR -> "driving-ecar";
             case DRIVING_HGV -> "driving-hgv";
+            case DRIVING_BUS -> "driving-bus";
             case DRIVING_MOTORCYCLE -> "driving-motorcycle";
             case DRIVING_EMERGENCY -> "driving-emergency";
             case CYCLING_REGULAR -> "cycling-regular";
@@ -142,6 +145,7 @@ public class RoutingProfileType {
             case "driving-car" -> DRIVING_CAR;
             case "driving-ecar" -> DRIVING_ELECTRIC_CAR;
             case "driving-hgv" -> DRIVING_HGV;
+            case "driving-bus" -> DRIVING_BUS;
             case "driving-motorcycle" -> DRIVING_MOTORCYCLE;
             case "driving-emergency" -> DRIVING_EMERGENCY;
             case "cycling-regular" -> CYCLING_REGULAR;
@@ -171,6 +175,7 @@ public class RoutingProfileType {
         return switch (routePref) {
             case RoutingProfileType.DRIVING_CAR -> FlagEncoderNames.CAR_ORS;
             case RoutingProfileType.DRIVING_HGV -> FlagEncoderNames.HEAVYVEHICLE;
+            case RoutingProfileType.DRIVING_BUS -> FlagEncoderNames.BUS;
             case RoutingProfileType.DRIVING_EMERGENCY -> FlagEncoderNames.EMERGENCY;
             case RoutingProfileType.DRIVING_MOTORCYCLE -> FlagEncoderNames.GH_MOTOCYCLE;
             case RoutingProfileType.DRIVING_ELECTRIC_CAR -> FlagEncoderNames.EVEHICLE;
@@ -202,6 +207,9 @@ public class RoutingProfileType {
 
             /* a ors self implemented flagencoder */
             case FlagEncoderNames.HEAVYVEHICLE -> RoutingProfileType.DRIVING_HGV;
+
+            /* autobus miejski */
+            case FlagEncoderNames.BUS -> RoutingProfileType.DRIVING_BUS;
 
             /* not in use */
             case FlagEncoderNames.EVEHICLE -> RoutingProfileType.DRIVING_ELECTRIC_CAR;

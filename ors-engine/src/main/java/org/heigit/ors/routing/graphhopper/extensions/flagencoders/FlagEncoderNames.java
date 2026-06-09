@@ -7,6 +7,8 @@ public class FlagEncoderNames {
 
     public static final String CAR_ORS = "car" + ORS_SUFFIX;
     public static final String HEAVYVEHICLE = "heavyvehicle";
+    // Autobus miejski — bez myślnika, bo nazwa staje się prefiksem EncodedValue (np. bus_preferred).
+    public static final String BUS = "bus";
     public static final String EMERGENCY = "emergency";
     public static final String EVEHICLE = "evehicle";       // NOT IMPLEMENTED
     public static final String RUNNING = "running";        // NOT IMPLEMENTED

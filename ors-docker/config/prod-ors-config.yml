@@ -31,7 +31,7 @@ ors:
         encoder_name: driving-hgv
         build:
           encoder_options:
-            turn_costs: false
+            turn_costs: true        # buduj graf z kosztami skrętów (wymagane do blokady zawrotek)
             block_fords: false
             block_barriers: false
             use_acceleration: false
@@ -44,8 +44,31 @@ ors:
               restrictions: true
             WaySurfaceType:
         service:
-          force_turn_costs: false
-          u_turn_costs: 5000
+          force_turn_costs: true    # wymuś użycie kosztów skrętów w routingu (nie tylko na żądanie)
+          u_turn_costs: -1          # -1 = nieskończony koszt zawrotki => zawrotki zablokowane
+          weighting: shortest
+          allow_custom_models: true
+      # Dedykowany profil autobusu miejskiego (BusFlagEncoder). Działa równolegle do driving-hgv.
+      # Wymiary fizyczne (width/height/weight) zapieczone w enkoderze z surowego OSM — dlatego BRAK
+      # ext_storage HeavyVehicle. CH wyłączone (niekompatybilne z per-request custom_model).
+      driving-bus:
+        enabled: true
+        encoder_name: driving-bus
+        build:
+          encoder_options:
+            turn_costs: true
+            block_fords: false
+            block_barriers: false
+            use_acceleration: false
+            enable_custom_models: true
+          preparation:
+            min_network_size: 200
+          ext_storages:
+            WayCategory:
+            WaySurfaceType:
+        service:
+          force_turn_costs: true
+          u_turn_costs: -1
           weighting: shortest
           allow_custom_models: true
 

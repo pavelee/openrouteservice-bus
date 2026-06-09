@@ -35,6 +35,9 @@ public class ORSDefaultFlagEncoderFactory extends DefaultFlagEncoderFactory impl
             case FlagEncoderNames.HEAVYVEHICLE:
                 return new org.heigit.ors.routing.graphhopper.extensions.flagencoders.HeavyVehicleFlagEncoder(configuration);
 
+            case FlagEncoderNames.BUS:
+                return new org.heigit.ors.routing.graphhopper.extensions.flagencoders.BusFlagEncoder(configuration);
+
             case FlagEncoderNames.BIKE_ORS:
                 if (configuration.getBool(KEY_CONSIDER_ELEVATION, false)) {
                     configuration.remove(KEY_CONSIDER_ELEVATION);

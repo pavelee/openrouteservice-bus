@@ -11,6 +11,7 @@ public enum EncoderNameEnum {
     // DRIVING STUFF
     DRIVING_CAR("driving-car", 1),
     DRIVING_HGV("driving-hgv", 2),
+    DRIVING_BUS("driving-bus", 9),
     @JsonIgnore
     DRIVING_EMERGENCY("driving-emergency", 3), // not supported
     @JsonIgnore
@@ -66,6 +67,7 @@ public enum EncoderNameEnum {
     public static boolean isDriving(int routePref) {
         return routePref == DRIVING_CAR.getValue()
                 || routePref == DRIVING_HGV.getValue()
+                || routePref == DRIVING_BUS.getValue()
                 || routePref == DRIVING_ELECTRIC_CAR.getValue()
                 || routePref == DRIVING_EMERGENCY.getValue()
                 || routePref == DRIVING_MOTORCYCLE.getValue()
@@ -134,6 +136,7 @@ public enum EncoderNameEnum {
         return switch (routePref) {
             case 1 -> FlagEncoderNames.CAR_ORS;
             case 2 -> FlagEncoderNames.HEAVYVEHICLE;
+            case 9 -> FlagEncoderNames.BUS;
             case 3 -> FlagEncoderNames.EMERGENCY;
             case 7 -> FlagEncoderNames.GH_MOTOCYCLE;
             case 6 -> FlagEncoderNames.EVEHICLE;
@@ -161,6 +164,7 @@ public enum EncoderNameEnum {
         return switch (encoder) {
             case FlagEncoderNames.CAR_ORS -> DRIVING_CAR.getValue();
             case FlagEncoderNames.HEAVYVEHICLE -> DRIVING_HGV.getValue();
+            case FlagEncoderNames.BUS -> DRIVING_BUS.getValue();
             case FlagEncoderNames.EMERGENCY -> DRIVING_EMERGENCY.getValue();
             case FlagEncoderNames.GH_MOTOCYCLE -> DRIVING_MOTORCYCLE.getValue();
             case FlagEncoderNames.EVEHICLE -> DRIVING_ELECTRIC_CAR.getValue();

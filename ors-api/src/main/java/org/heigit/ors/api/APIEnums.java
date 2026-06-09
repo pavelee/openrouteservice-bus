@@ -297,6 +297,7 @@ public class APIEnums {
     public enum Profile {
         DRIVING_CAR("driving-car"),
         DRIVING_HGV("driving-hgv"),
+        DRIVING_BUS("driving-bus"),
         CYCLING_REGULAR("cycling-regular"),
         CYCLING_ROAD("cycling-road"),
         CYCLING_MOUNTAIN("cycling-mountain"),
