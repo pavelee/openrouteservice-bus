@@ -71,7 +71,15 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     // realnie jeździ (np. Aleje Jerozolimskie maxweight=5 + lanes:psv=1). maxheight/maxwidth/maxlength
     // to twarde gabaryty — autobus fizycznie się nie zmieści, więc je zostawiamy.
     private static final double BUS_MAX_WIDTH = 2.55;   // metry
-    private static final double BUS_MAX_HEIGHT = 3.4;   // metry
+    // Realna wysokość warszawskiego autobusu miejskiego (Solaris Urbino i pochodne z osprzętem
+    // dachowym ≈ 3.0 m). NIE jest to "najwyższy możliwy autobus" — celowo niżej niż dawne 3.4 m.
+    // Przy 3.4 m enkoder wycinał korytarz Żwirki i Wigury pod lotniskiem (maxheight=3.2 na tunelu
+    // pod płytą), przez co przystanki Lotnisko-Przyloty / Terminal Autokarowy lądowały na
+    // odizolowanej wyspie i trasa linii 331 nie dawała się wyznaczyć. Najniższe przejazdy, którymi
+    // realnie kursują autobusy MZA, mają ~3.2 m, więc próg 3.0 m je przepuszcza, a nadal blokuje
+    // konstrukcje faktycznie zbyt niskie (np. zadaszone dojazdy maxheight=2.5). Jawny wyjątek
+    // maxheight:bus/maxheight:psv ma pierwszeństwo — patrz dimensionBelow().
+    private static final double BUS_MAX_HEIGHT = 3.0;   // metry
     private static final double BUS_MAX_LENGTH = 18.75; // metry (max autobus przegubowy w UE)
 
     private static final int MEAN_SPEED = 50;
@@ -112,6 +120,17 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         intendedValues.add("bus");
         intendedValues.add("psv");
         intendedValues.add("public_transport");
+
+        // Klucze restrykcyjne specyficzne dla transportu publicznego — DODANE PRZED odziedziczonymi
+        // [motorcar, motor_vehicle, vehicle, access]. GraphHopper używa tej listy nie tylko do dostępu
+        // krawędzi, ale też do dopasowania `except` w relacjach turn-restriction: profil jest zwolniony
+        // z `except=X` tylko wtedy, gdy `X` jest na tej liście. Bez tego autobus NIE był zwalniany z
+        // `except=bus`/`except=psv` (np. `no_left_turn except=bus` na Rondzie de Gaulle'a), więc tracił
+        // dostęp do skrętów buspasowych i nadkładał drogi. Kolejność (bus/psv przed access) sprawia, że
+        // dla drogi z bus=yes + access=no priorytet ma tag bus (getFirstPriorityTagValues).
+        // UWAGA: zmiana jest build-time — wymaga przebudowy grafu.
+        restrictions.add(0, "psv");
+        restrictions.add(0, "bus");
 
         // Drogi zamknięte dla ruchu ogólnego — autobus korzysta z nich tylko przy jawnym wyjątku.
         restrictedValues.add("private");
@@ -295,17 +314,26 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
      * tagów OSM maxwidth/maxheight/maxlength/maxweight.
      */
     private boolean exceedsPhysicalLimit(ReaderWay way) {
-        return meterBelow(way, "maxwidth", BUS_MAX_WIDTH)
-                || meterBelow(way, "maxheight", BUS_MAX_HEIGHT)
-                || meterBelow(way, "maxlength", BUS_MAX_LENGTH);
+        return dimensionBelow(way, "maxwidth", BUS_MAX_WIDTH)
+                || dimensionBelow(way, "maxheight", BUS_MAX_HEIGHT)
+                || dimensionBelow(way, "maxlength", BUS_MAX_LENGTH);
     }
 
-    private boolean meterBelow(ReaderWay way, String key, double limit) {
-        String value = way.getTag(key);
+    /**
+     * Czy limit gabarytu jest mniejszy niż dany wymiar autobusu. Wariant specyficzny dla transportu
+     * publicznego (np. maxheight:bus, maxheight:psv) ma pierwszeństwo nad limitem ogólnym — pozwala
+     * to uszanować jawny wyjątek "nie dotyczy autobusów" tam, gdzie OSM go taguje.
+     */
+    private boolean dimensionBelow(ReaderWay way, String key, double busDimension) {
+        String value = way.getTag(key + ":bus");
+        if (value == null)
+            value = way.getTag(key + ":psv");
+        if (value == null)
+            value = way.getTag(key);
         if (value == null)
             return false;
         double m = OSMValueExtractor.stringToMeter(value);
-        return m > 0 && m < Double.MAX_VALUE && m < limit;
+        return m > 0 && m < Double.MAX_VALUE && m < busDimension;
     }
 
     /**
@@ -382,6 +410,12 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         if (way.hasTag("bus_guideway", "yes"))
             return true;
         if (way.hasTag("bus", VAL_DESIGNATED) || way.hasTag("psv", VAL_DESIGNATED))
+            return true;
+        // Jawne dopuszczenie autobusu/psv (bus=yes / psv=yes) — m.in. zatoki/pętle przystankowe
+        // tagowane highway=service + psv=yes (np. dojazdy do Dw. Centralnego). Oznaczenie ich jako
+        // "preferowane" pozwala custom_model karać mocno DROGI SERWISOWE NIE-autobusowe (parkingi,
+        // dojazdy) bez uderzania w legalne zatoki — patrz reguła SERVICE && bus$preferred==false.
+        if (way.hasTag("bus", "yes") || way.hasTag("psv", "yes"))
             return true;
         if (way.hasTag("busway", "lane") || way.hasTag("busway", "opposite_lane")
                 || way.hasTag("busway:left") || way.hasTag("busway:right"))

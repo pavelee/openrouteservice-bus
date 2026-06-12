@@ -1,4 +1,4 @@
-graph_build_date: 2026-06-07T20:53:13+0000
+graph_build_date: 2026-06-12T21:52:37+0000
 osm_date: null
 graph_version: 2
 profile_properties:
@@ -15,7 +15,7 @@ profile_properties:
     location_index_search_iterations: 4
     encoder_options:
       block_fords: false
-      turn_costs: false
+      turn_costs: true
       use_acceleration: false
       enable_custom_models: true
     preparation:
