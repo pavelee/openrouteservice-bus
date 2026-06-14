@@ -54,8 +54,13 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                 self.depth = 0
                 
                 # 1963216 - zakręt w lewo w piękną (obok sejmu) np. 131
-                # Lista relacji do pominięcia - domyślnie 1963216 + dodatkowe z parametru
-                self.skip_relations = ['1963216'] + skip_relations
+                # 9166265 - no_left_turn Patriotów(377954285)->Bysławska(507958952) via węzeł 4973651213.
+                #   Linia 229 / route 481510, między PKP Falenica 59 a 57: blokuje skręt z Patriotów wprost
+                #   w Bysławska, przez co router jedzie dalej Patriotów i pętli (z bearingami produkcyjnymi
+                #   przez Ciepielowską/Malczycką — zawrotka na ciasnej ulicy). Restrykcja z 2018, kierowca
+                #   potwierdza że skręt jest przejezdny dla autobusu → usuwamy (jak 1963216).
+                # Lista relacji do pominięcia - domyślnie powyższe + dodatkowe z parametru
+                self.skip_relations = ['1963216', '9166265'] + skip_relations
                 
                 # Open output file
                 self.out = open(output_file, 'wb')
