@@ -72,6 +72,15 @@ public class ORSGraphHopperConfig extends GraphHopperConfig {
                 ghConfig.putObject("graph.elevation.smoothing", true);
         }
 
+        // Udostępnij EncodedValue 'lanes' custom_modelowi (deprioritetyzacja wąskich 1-pasmowych dróg tertiary —
+        // patrz orsBusCustomModel.ts). DefaultTagParserFactory zna "lanes", a OSMLanesParser sam tworzy EV
+        // (domyślnie 1 dla nieotagowanych, clamp [1,6]). Dokładamy do istniejącej listy, nie nadpisując jej.
+        String existingEncodedValues = ghConfig.getString("graph.encoded_values", "");
+        if (!Arrays.asList(existingEncodedValues.split(",")).contains("lanes")) {
+            ghConfig.putObject("graph.encoded_values",
+                    existingEncodedValues.isEmpty() ? "lanes" : existingEncodedValues + ",lanes");
+        }
+
         boolean prepareCH = false;
         boolean prepareLM = false;
         boolean prepareCore = false;
