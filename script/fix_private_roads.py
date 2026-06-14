@@ -141,6 +141,15 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     if self.current_way in ['116934893'] and k == 'oneway':
                         self.out.write(b'    <tag k="oneway" v="yes"/>\n')
                         return
+                    
+                    # Skip access=private tags
+                    if k == 'access' and v == 'private':
+                        self.is_private = True
+                        return  # Skip writing this tag
+
+                    if k == 'access' and v == 'no':
+                        self.is_private = True
+                        return  # Skip writing this tag
 
                     # zdejmujemy wszystkie remonty dla minimalizacji anomalii
                     if k == 'highway' and v == 'construction':
