@@ -123,6 +123,20 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                         self.out.write(b'    <tag k="oneway:bus" v="no"/>\n')
                         return
 
+                    # Linia 106 / route 481257, Grzybowska (między Al. Jana Pawła II a Wronią):
+                    # way 116934893 (~27 m, odcinek Waliców→Pereca) jest narysowany w ODWROTNEJ
+                    # kolejności węzłów niż sąsiednie segmenty Grzybowskiej, ale ma ten sam oneway=-1.
+                    # Skutek: ten jeden odcinek daje przejazd eastbound "pod prąd" w środku
+                    # jednokierunkowego korytarza westbound (sąsiedzi oneway=-1 rysowani W→E oraz
+                    # oneway=yes rysowani E→W są wszyscy westbound). Autobus jadący na zachód nie może
+                    # przejechać i robi objazd Waliców→Pereca→Grzybowska. Eastbound w tym korytarzu jest
+                    # i tak niemożliwy (potwierdzone routingiem), więc korytarz jest jednokierunkowy
+                    # westbound. Geometria 116934893 to 8842508338(wschód)→4298291164(zachód), zatem
+                    # oneway=yes = przejazd east→west = westbound, spójny z resztą Grzybowskiej.
+                    if self.current_way in ['116934893'] and k == 'oneway':
+                        self.out.write(b'    <tag k="oneway" v="yes"/>\n')
+                        return
+
                     # zdejmujemy wszystkie remonty dla minimalizacji anomalii
                     if k == 'highway' and v == 'construction':
                         self.out.write(f'    <{name} k="highway" v="secondary"/>\n'.encode('utf-8'))
