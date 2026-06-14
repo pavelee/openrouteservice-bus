@@ -387,6 +387,26 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
                 || (node.hasTag("barrier") && node.hasTag(busAccess, intendedValues))) {
             return 0;
         }
+
+        // Szlabany/rogatki (barrier=lift_gate) — m.in. automatyczne rogatki przejazdów kolejowych —
+        // bywają zmapowane jako osobne węzły na jezdni (tag railway=level_crossing siedzi zwykle na
+        // INNYM węźle, więc nie da się go tu sprawdzić). Taki szlaban otwiera się dla ruchu drogowego,
+        // a blokowanie go odcina przelot przez przejazd. Przykład: PKP Legionowo Piaski (linia 731,
+        // route 481689) — węzły 13062001221/13062001220 przecinały Piaskową, przez co autobus
+        // objeżdżał Szwajcarską/Kolejową. Dla profilu bus traktujemy lift_gate jako przejezdny,
+        // chyba że jest jawnie zamknięty (locked=yes) lub ma jawną restrykcję dostępu (np. access=private).
+        if (node.hasTag("barrier", "lift_gate") && !node.hasTag("locked", "yes")) {
+            boolean restricted = false;
+            for (String res : restrictions) {
+                if (node.hasTag(res, restrictedValues)) {
+                    restricted = true;
+                    break;
+                }
+            }
+            if (!restricted)
+                return 0;
+        }
+
         return super.handleNodeTags(node);
     }
 

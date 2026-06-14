@@ -133,6 +133,46 @@ class BusFlagEncoderTest {
     }
 
     @Test
+    void testLiftGatePassableEvenWhenBarriersBlocked() {
+        // Rogatka/szlaban (np. automatyczna rogatka przejazdu kolejowego) musi być przejezdna dla
+        // autobusu nawet gdy bariery są generalnie blokujące — to odwzorowuje stan produkcyjnego grafu,
+        // w którym lift_gate przy PKP Legionowo Piaski odcinał linię 731.
+        encoder.blockBarriers(true);
+        ReaderNode node = new ReaderNode(1, 0, 0);
+        node.setTag("barrier", "lift_gate");
+        node.setTag("lift_gate:type", "double");
+        assertTrue(encoder.handleNodeTags(node) == 0);
+    }
+
+    @Test
+    void testLockedLiftGateBlocks() {
+        encoder.blockBarriers(true);
+        ReaderNode node = new ReaderNode(1, 0, 0);
+        node.setTag("barrier", "lift_gate");
+        node.setTag("locked", "yes");
+        assertFalse(encoder.handleNodeTags(node) == 0);
+    }
+
+    @Test
+    void testLiftGateWithAccessRestrictionBlocks() {
+        encoder.blockBarriers(true);
+        ReaderNode node = new ReaderNode(1, 0, 0);
+        node.setTag("barrier", "lift_gate");
+        node.setTag("access", "private");
+        assertFalse(encoder.handleNodeTags(node) == 0);
+    }
+
+    @Test
+    void testLiftGateWithBusAccessPassable() {
+        encoder.blockBarriers(true);
+        ReaderNode node = new ReaderNode(1, 0, 0);
+        node.setTag("barrier", "lift_gate");
+        node.setTag("access", "private");
+        node.setTag("bus", "yes");
+        assertTrue(encoder.handleNodeTags(node) == 0);
+    }
+
+    @Test
     void testBusPreferredEncodedValueForBuswayIsAvailableToCustomModel() {
         // EncodedValue "bus_preferred" musi istnieć (custom_model się do niego odwołuje)
         BooleanEncodedValue busPreferred = em.getBooleanEncodedValue(BusFlagEncoder.KEY_BUS_PREFERRED);
