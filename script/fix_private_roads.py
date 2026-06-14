@@ -59,8 +59,14 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                 #   w Bysławska, przez co router jedzie dalej Patriotów i pętli (z bearingami produkcyjnymi
                 #   przez Ciepielowską/Malczycką — zawrotka na ciasnej ulicy). Restrykcja z 2018, kierowca
                 #   potwierdza że skręt jest przejezdny dla autobusu → usuwamy (jak 1963216).
+                # 18888466 - no_left_turn Plac Powstańców Warszawy(1370881107)->(1120466800) via węzeł 224852315.
+                #   Linia 107 / route 481259, między Pl. Powstańców Warszawy 01 a Chmielna 01: blokuje
+                #   przejazd PROSTO na południe przez plac (oba way to "Plac Powstańców Warszawy", ruch
+                #   wprost/lekko w lewo). Bez fixu router omija plac Świętokrzyska->Jasna->Brokla->Szpitalna
+                #   (770 m) zamiast jechać prosto Mazowiecka->przez plac (448 m). Brak except=bus, więc
+                #   dotyczy też autobusu; linia 107 realnie jeździ prosto przez plac → usuwamy.
                 # Lista relacji do pominięcia - domyślnie powyższe + dodatkowe z parametru
-                self.skip_relations = ['1963216', '9166265'] + skip_relations
+                self.skip_relations = ['1963216', '9166265', '18888466'] + skip_relations
                 
                 # Open output file
                 self.out = open(output_file, 'wb')
