@@ -108,70 +108,22 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     k = attrs.get('k', '')
                     v = attrs.get('v', '')
 
-                    # reczne ubicie sciezki
-                    # 171028660 - czarnomorksa zakret
-                    # 206528330 - rezedowa, 402
-                    # 114895531 - Wyszczółki 331
-                    if self.current_way in ['506254774', '491365793', '206528330', '114895531'] and k == 'highway':
-                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
-                        return 
-
-                    # cholera jasna problem z remontami!
-                    # Aleja Niepodległości! 
-                    # if self.current_way in ['331762058', '952058010', '116931784', '187536173'] and k == 'oneway':
-                    #     return
-                    #     self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
-
-                    # zablokowanie Zagłoby aby poprawić cholerny 187
-                    if self.current_way in ['33276900']:
-                        return
-                    
-                    # zablokowanie ZŁOTA bo cholerny 504
-                    if self.current_way in ['308031464']:
-                        return
-                
-                    # zablokowanie dla 127 WIŚLANA KURWAAWRWARAW
-                    if self.current_way in ['20930779']:
+                    # Linia 409 / św. Wincentego przy Metro Kondratowicza: jezdnia rozdzielona ma
+                    # zerwaną nitkę północną — łącznik 1453889955 (~17 m) jest oneway=yes na południe,
+                    # więc autobus jadący na północ robił objazd 20 Dyw. Piechoty WP + zawrotkę.
+                    # Dodajemy oneway:bus=no — BusFlagEncoder.isOneway() zwalnia odcinek z jednokierunkowości
+                    # tylko dla profilu driving-bus (ruch samochodowy zostaje jednokierunkowy).
+                    if self.current_way in ['1453889955'] and k == 'highway':
+                        # zapisz oryginalny tag highway bez zmian
+                        self.out.write(f'    <{name}'.encode('utf-8'))
+                        for attr_name, attr_value in attrs.items():
+                            self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
+                        self.out.write(b'/>\n')
+                        # dołóż wyjątek oneway dla autobusu
+                        self.out.write(b'    <tag k="oneway:bus" v="no"/>\n')
                         return
 
-                    # zablokowanie Kościuszki bo cholerny 817
-                    if self.current_way in ['341151409']:
-                        return
-                    
-                    # zablokowanie wiejskiej - 131
-                    if self.current_way in ['888011097', '174143991', '386852929']:
-                        return
-                    
-                    # zablokowanie Generała Michała Tokarzewskiego-Karaszewicza aby autobus 128 jechał Królewską
-                    if self.current_way in ['860371908']:
-                        return
-
-                    # NOWY ŚWIAT KURCZAKI
-                    # if self.current_way in ['24384574', '306458016', '137020852', '137020852', '1111601198', '882352736'] and k == 'access' and v == 'private':
-                    #     self.is_private = True
-                    #     return
-
-                    # Skip access=private tags
-                    if k == 'access' and v == 'private':
-                        self.is_private = True
-                        return  # Skip writing this tag
-
-                    if k == 'access' and v == 'no':
-                        self.is_private = True
-                        return  # Skip writing this tag
-                    
-                    # # Change highway=residential to highway=tertiary
-                    # if k == 'highway' and v == 'residential':
-                    #     self.is_residential = True
-                    #     self.out.write(f'    <{name} k="highway" v="tertiary"/>\n'.encode('utf-8'))
-                    #     return
-
-                    # change highway=unclassified to highway=tertiary
-                    # if k == 'highway' and v == 'unclassified':
-                    #     self.out.write(f'    <{name} k="highway" v="residential"/>\n'.encode('utf-8'))
-                    #     return
-
-                    # change highway=construction to highway=secondary
+                    # zdejmujemy wszystkie remonty dla minimalizacji anomalii
                     if k == 'highway' and v == 'construction':
                         self.out.write(f'    <{name} k="highway" v="secondary"/>\n'.encode('utf-8'))
                         return   
