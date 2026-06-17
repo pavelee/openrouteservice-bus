@@ -119,6 +119,12 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     k = attrs.get('k', '')
                     v = attrs.get('v', '')
 
+                    # 29571422 - linia 115 i problem ścinania przejazdu przez rondo, ulica jest zbyt ciasna dla autobusu. 
+                    # 34982097 - lina 129, cholerny problem omijana oświatowej na rzecz tej uliczki gimnazjalnej.. 
+                    if self.current_way in ['29571422', '34982097'] and k == 'highway':
+                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                        return
+
                     # Linia 409 / św. Wincentego przy Metro Kondratowicza: jezdnia rozdzielona ma
                     # zerwaną nitkę północną — łącznik 1453889955 (~17 m) jest oneway=yes na południe,
                     # więc autobus jadący na północ robił objazd 20 Dyw. Piechoty WP + zawrotkę.
@@ -158,11 +164,11 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                         return  # Skip writing this tag
 
                     # zdejmujemy wszystkie remonty dla minimalizacji anomalii
-                    if k == 'highway' and v == 'construction':
-                        self.out.write(f'    <{name} k="highway" v="secondary"/>\n'.encode('utf-8'))
-                        return   
-                    if k == 'construction':
-                        return  # Skip writing this tag  
+                    # if k == 'highway' and v == 'construction':
+                    #     self.out.write(f'    <{name} k="highway" v="secondary"/>\n'.encode('utf-8'))
+                    #     return   
+                    # if k == 'construction':
+                    #     return  # Skip writing this tag  
                     
                     # Write other tags normally
                     self.out.write(f'    <{name}'.encode('utf-8'))
