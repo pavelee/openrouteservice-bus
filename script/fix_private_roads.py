@@ -66,7 +66,8 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                 #   (770 m) zamiast jechać prosto Mazowiecka->przez plac (448 m). Brak except=bus, więc
                 #   dotyczy też autobusu; linia 107 realnie jeździ prosto przez plac → usuwamy.
                 # Lista relacji do pominięcia - domyślnie powyższe + dodatkowe z parametru
-                self.skip_relations = ['1963216', '9166265', '18888466'] + skip_relations
+                # 7783785 - no_left_turn dla Białobrzeska, 154, autobus wyraźnie może tam jeździć jak chce :D 
+                self.skip_relations = ['1963216', '9166265', '18888466', '7783785'] + skip_relations
                 
                 # Open output file
                 self.out = open(output_file, 'wb')
