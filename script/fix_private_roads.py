@@ -67,7 +67,8 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                 #   dotyczy też autobusu; linia 107 realnie jeździ prosto przez plac → usuwamy.
                 # Lista relacji do pominięcia - domyślnie powyższe + dodatkowe z parametru
                 # 7783785 - no_left_turn dla Białobrzeska, 154, autobus wyraźnie może tam jeździć jak chce :D 
-                self.skip_relations = ['1963216', '9166265', '18888466', '7783785'] + skip_relations
+                # 20253836 - zakręt na stawki w lewo.. 157 może wszystko jak zawsze wtf
+                self.skip_relations = ['1963216', '9166265', '18888466', '7783785', '20253836'] + skip_relations
                 
                 # Open output file
                 self.out = open(output_file, 'wb')
