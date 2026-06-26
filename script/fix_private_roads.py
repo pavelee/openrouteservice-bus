@@ -156,6 +156,38 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                         self.out.write(b'    <tag k="oneway" v="yes"/>\n')
                         return
                     
+                    # reczne ubicie sciezki
+                    # 171028660 - czarnomorksa zakret
+                    # 206528330 - rezedowa, 402
+                    # 114895531 - Wyszczółki 331
+                    if self.current_way in ['506254774', '491365793', '206528330', '114895531'] and k == 'highway':
+                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                        return 
+
+                    # zablokowanie Zagłoby aby poprawić cholerny 187
+                    if self.current_way in ['33276900']:
+                        return
+                    
+                    # zablokowanie ZŁOTA bo cholerny 504
+                    if self.current_way in ['308031464']:
+                        return
+                
+                    # zablokowanie dla 127 WIŚLANA KURWAAWRWARAW
+                    if self.current_way in ['20930779']:
+                        return
+
+                    # zablokowanie Kościuszki bo cholerny 817
+                    if self.current_way in ['341151409']:
+                        return
+                    
+                    # zablokowanie wiejskiej - 131
+                    if self.current_way in ['888011097', '174143991', '386852929']:
+                        return
+                    
+                    # zablokowanie Generała Michała Tokarzewskiego-Karaszewicza aby autobus 128 jechał Królewską
+                    if self.current_way in ['860371908']:
+                        return                    
+                    
                     # Skip access=private tags
                     if k == 'access' and v == 'private':
                         self.is_private = True
