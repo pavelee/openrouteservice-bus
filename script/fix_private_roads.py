@@ -142,6 +142,30 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                         self.out.write(b'    <tag k="oneway:bus" v="no"/>\n')
                         return
 
+                    # Wyprzedzone zablokowanie ulic z powodu remontu, OSM jeszcze nie zaktualizowany
+                    if self.current_way in ['240546186', '130694651', '96584848', '122225815'] and k == 'highway':
+                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                        return
+
+                    # Linia Z33 / route 505680, Rondo ONZ 01 → Dw. Centralny 23: wjazd na podziemny
+                    # ślimak (bus-only rampa do zatoki przystankowej) ma 3 pierwsze odcinki BEZ
+                    # psv=yes (27569980 62 m, 307888832 44 m, 30611690 78 m), choć kontynuacja tej
+                    # samej rampy (128214245→128214247→30806163, kończy się dokładnie w punkcie
+                    # przystanku) JEST otagowana psv=yes. Reguła custom_modelu
+                    # `road_class==SERVICE && bus$preferred==false → ×0.1` (chroni psv-tagowane
+                    # zatoki, np. ta sama rampa dla linii 504) penalizuje też te 3 odcinki, bo nie
+                    # mają tagu — ważony koszt rampy (619 m realnie) wychodzi wyżej niż objazd
+                    # powierzchniowy przez Aleje Jerozolimskie/Chałubińskiego (802 m), więc router
+                    # robi nawrotkę na skrzyżowaniu zamiast skręcić w ślimaka. Dotagowanie psv=yes
+                    # dorównuje je do reszty rampy — bez zmiany w custom_model.
+                    if self.current_way in ['27569980', '307888832', '30611690'] and k == 'highway':
+                        self.out.write(f'    <{name}'.encode('utf-8'))
+                        for attr_name, attr_value in attrs.items():
+                            self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
+                        self.out.write(b'/>\n')
+                        self.out.write(b'    <tag k="psv" v="yes"/>\n')
+                        return
+
                     # Linia 106 / route 481257, Grzybowska (między Al. Jana Pawła II a Wronią):
                     # way 116934893 (~27 m, odcinek Waliców→Pereca) jest narysowany w ODWROTNEJ
                     # kolejności węzłów niż sąsiednie segmenty Grzybowskiej, ale ma ten sam oneway=-1.
