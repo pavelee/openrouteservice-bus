@@ -19,8 +19,11 @@ ORS_BASE = sys.argv[2] if len(sys.argv) > 2 else "http://localhost:8080/ors"
 ROUTE_ID = sys.argv[1] if len(sys.argv) > 1 else "481380"
 
 # --- custom_model: lustro orsBusCustomModel.ts (BUS_CUSTOM_MODEL) ---
+# UWAGA: musi być zsynchronizowane z web/app/_service/directions/orsBusCustomModel.ts —
+# rozjechało się wcześniej (di 1000 vs 700, SERVICE 0.05 vs 0.1), zsynchronizowane 2026-06-29
+# przy wdrożeniu bus$on_route (linia 187 route 508854).
 BUS_CUSTOM_MODEL = {
-    "distance_influence": 1000,
+    "distance_influence": 700,
     "speed": [{"if": "road_class == LIVING_STREET", "multiply_by": 0.5}],
     "priority": [
         {"if": "bus$preferred == true", "multiply_by": 1.0},
@@ -28,8 +31,8 @@ BUS_CUSTOM_MODEL = {
         {"if": "road_class == TERTIARY", "multiply_by": 0.857},
         {"if": "road_class == TERTIARY && lanes == 1", "multiply_by": 0.4},
         {"if": "road_class == RESIDENTIAL || road_class == UNCLASSIFIED", "multiply_by": 0.714},
-        {"if": "road_class == RESIDENTIAL && max_speed > 90", "multiply_by": 0.5},
-        {"if": "road_class == SERVICE && bus$preferred == false", "multiply_by": 0.05},
+        {"if": "road_class == RESIDENTIAL && max_speed > 90 && bus$on_route == false", "multiply_by": 0.5},
+        {"if": "road_class == SERVICE && bus$preferred == false", "multiply_by": 0.1},
         {"if": "road_class == TRACK", "multiply_by": 0.286},
         {"if": "road_class == LIVING_STREET", "multiply_by": 0.143},
     ],
@@ -77,7 +80,9 @@ def circmean(b1, b2):
 
 
 def build_bearings(coords):
-    BASE, MAXT = 30, 90
+    # MAXT=75 (nie 90), UTURN=135 — zsynchronizowane z calculateBearings() w
+    # OpenRouteDirection.ts (linia 165 Osmańska, linia 128 Plac Zamkowy).
+    BASE, MAXT, UTURN = 30, 75, 135
     out = []
     for i, c in enumerate(coords):
         if len(coords) < 2:
@@ -88,6 +93,9 @@ def build_bearings(coords):
             out.append([round(bearing(coords[i - 1], c)) % 360, BASE]); continue
         inB, outB = bearing(coords[i - 1], c), bearing(c, coords[i + 1])
         ta = abs(outB - inB); ta = 360 - ta if ta > 180 else ta
+        if ta > UTURN:
+            # Nawrót: pominięcie nie wystarcza, narzucamy bearing wyjazdowy.
+            out.append([round(outB) % 360, BASE]); continue
         if ta > MAXT:
             out.append([]); continue
         out.append([round(circmean(inB, outB)) % 360, min(BASE + round(ta / 2), 180)])

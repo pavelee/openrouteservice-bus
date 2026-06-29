@@ -63,6 +63,13 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     // Klient w orsBusCustomModel.ts MUSI odwołać się dokładnie tą nazwą: `bus$preferred`.
     public static final String KEY_BUS_PREFERRED = FlagEncoderNames.BUS + "$preferred";
 
+    // EncodedValue analogiczny do bus$preferred, ale sygnalizujący "ten way jest częścią
+    // jakiejkolwiek relacji OSM route=bus" (tag bus:on_route=yes, wstrzykiwany build-time przez
+    // fix_private_roads.py na podstawie PostGIS bus_route_ways — zob. cron/osm2pgsql/import/
+    // bus_routes.lua). Zastępuje heurystykę "maxspeed otagowany ⇒ to nie skrót" w custom_model
+    // realnym sygnałem "tu faktycznie jeździ jakaś linia autobusowa".
+    public static final String KEY_BUS_ON_ROUTE = FlagEncoderNames.BUS + "$on_route";
+
     // Gabaryty fizyczne autobusu miejskiego (przegubowego) — krawędzie poniżej tych progów są
     // pomijane na podstawie surowych tagów OSM. Zmiana progu wymaga przebudowy grafu.
     // UWAGA: świadomie NIE sprawdzamy maxweight. Miejskie limity tonażu (maxweight=5/10 t) celują
@@ -93,6 +100,9 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     private DecimalEncodedValue priorityWayEncoder;
     // Czy krawędź to dedykowana infrastruktura autobusowa — czytane przez custom_model.
     private BooleanEncodedValue busPreferredEncoder;
+    // Czy krawędź jest częścią ≥1 relacji OSM route=bus — czytane przez custom_model, by
+    // wyłączyć karę "osiedlowe skróty" dla legalnych korytarzy bez tagu maxspeed.
+    private BooleanEncodedValue busOnRouteEncoder;
 
     /**
      * Should be only instantied via EncodingManager
@@ -190,6 +200,9 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         // przez EncodingManager dla EV enkodera).
         busPreferredEncoder = new SimpleBooleanEncodedValue(getKey(prefix, "preferred"), false);
         registerNewEncodedValue.add(busPreferredEncoder);
+        // EncodedValue czytany przez custom_model jako "bus$on_route".
+        busOnRouteEncoder = new SimpleBooleanEncodedValue(getKey(prefix, "on_route"), false);
+        registerNewEncodedValue.add(busOnRouteEncoder);
     }
 
     @Override
@@ -417,6 +430,8 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         priorityWayEncoder.setDecimal(false, edgeFlags, PriorityCode.getFactor(handlePriority(way)));
         if (isBusPreferredWay(way))
             busPreferredEncoder.setBool(false, edgeFlags, true);
+        if (isOnBusRoute(way))
+            busOnRouteEncoder.setBool(false, edgeFlags, true);
         return edgeFlags;
     }
 
@@ -441,6 +456,17 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
                 || way.hasTag("busway:left") || way.hasTag("busway:right"))
             return true;
         return way.hasTag("lanes:psv") || way.hasTag("lanes:bus");
+    }
+
+    /**
+     * Czy krawędź jest częścią ≥1 relacji OSM route=bus — sygnał systemowy zastępujący
+     * heurystykę "maxspeed otagowany ⇒ to nie skrót" w custom_model. Tag bus:on_route=yes
+     * NIE istnieje natywnie w OSM — jest wstrzykiwany przez fix_private_roads.py na podstawie
+     * tabeli PostGIS bus_route_ways (cron/osm2pgsql/import/bus_routes.lua), niezależnego
+     * pipeline'u od buildu grafu ORS.
+     */
+    private boolean isOnBusRoute(ReaderWay way) {
+        return way.hasTag("bus:on_route", "yes");
     }
 
     protected int handlePriority(ReaderWay way) {

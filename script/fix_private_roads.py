@@ -6,14 +6,41 @@ This script uses lxml for efficient XML parsing with low memory usage and ensure
 
 import sys
 import os
+import subprocess
 import time
 from lxml import etree
 
-def process_osm_file(input_file, output_file, skip_relations=None):
+def load_bus_route_way_ids():
+    """Wczytuje zbiór way_id z PostGIS bus_route_ways (cron/osm2pgsql/import/bus_routes.lua) —
+    way'e będące częścią jakiejkolwiek relacji OSM route=bus. Czytane przez isOnBusRoute()
+    w BusFlagEncoder.java (tag bus:on_route=yes), zastępuje heurystykę "maxspeed otagowany
+    ⇒ to nie skrót" w custom_model realnym sygnałem. Błąd/brak tabeli -> zbiór pusty,
+    NIE przerywa builda (ten sam wzorzec "nieblokujące" jak compute-bus-corridors.sql
+    w cron/import-script.sh)."""
+    try:
+        out = subprocess.run(
+            ["docker", "exec", "-e", "PGPASSWORD=o2p", "web-postgis-1",
+             "psql", "-h", "localhost", "-U", "o2p", "-d", "o2p",
+             "-t", "-A", "-c", "SELECT DISTINCT way_id FROM bus_route_ways;"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if out.returncode != 0:
+            print(f"WARN: bus_route_ways query failed (rc={out.returncode}): {out.stderr.strip()}")
+            return set()
+        ids = {line.strip() for line in out.stdout.splitlines() if line.strip()}
+        print(f"✓ Loaded {len(ids)} bus_route_ways way_ids from PostGIS")
+        return ids
+    except Exception as e:
+        print(f"WARN: bus_route_ways query failed non-fatally: {e}")
+        return set()
+
+def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way_ids=None):
     """Process OSM file using streaming parsing to ensure valid XML output."""
-    
+
     if skip_relations is None:
         skip_relations = []
+    if bus_route_way_ids is None:
+        bus_route_way_ids = set()
     
     # Check if input file exists
     if not os.path.isfile(input_file):
@@ -41,8 +68,9 @@ def process_osm_file(input_file, output_file, skip_relations=None):
     try:
         # Create a custom handler to process the XML
         class OSMHandler:
-            def __init__(self, output_file):
+            def __init__(self, output_file, bus_route_way_ids=None):
                 self.output_file = output_file
+                self.bus_route_way_ids = bus_route_way_ids or set()
                 self.current_way = None
                 self.current_relation = None
                 self.in_way = False
@@ -210,8 +238,22 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                     
                     # zablokowanie Generała Michała Tokarzewskiego-Karaszewicza aby autobus 128 jechał Królewską
                     if self.current_way in ['860371908']:
-                        return                    
-                    
+                        return
+
+                    # Tag systemowy: way jest częścią ≥1 relacji OSM route=bus (bus_route_ways,
+                    # zasilane przez cron/osm2pgsql/import/bus_routes.lua). Czytany przez
+                    # BusFlagEncoder.isOnBusRoute() -> EV bus$on_route, zwalnia z kary
+                    # "osiedlowe skróty" w orsBusCustomModel.ts. Systemowy zamiennik dla ręcznych
+                    # fixów maxspeed per way-ID (np. Orląt Lwowskich, linia 187 wyżej) — te
+                    # zostają jako bezpieczne no-opy, nowe przypadki już nie wymagają wpisu tutaj.
+                    if (self.current_way in self.bus_route_way_ids) and k == 'highway':
+                        self.out.write(f'    <{name}'.encode('utf-8'))
+                        for attr_name, attr_value in attrs.items():
+                            self.out.write(f' {attr_name}="{self._escape_attr(attr_value)}"'.encode('utf-8'))
+                        self.out.write(b'/>\n')
+                        self.out.write(b'    <tag k="bus:on_route" v="yes"/>\n')
+                        return
+
                     # Skip access=private tags
                     if k == 'access' and v == 'private':
                         self.is_private = True
@@ -327,7 +369,7 @@ def process_osm_file(input_file, output_file, skip_relations=None):
                 return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         
         # Create our handler
-        handler = OSMHandler(output_file)
+        handler = OSMHandler(output_file, bus_route_way_ids=bus_route_way_ids)
         
         # Print information about relations to be skipped
         if handler.skip_relations:
@@ -407,8 +449,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 3:
         relation_ids = sys.argv[3].split(',')
         additional_skip_relations = [rid.strip() for rid in relation_ids if rid.strip()]
-    
-    if process_osm_file(input_file, output_file, additional_skip_relations):
+
+    bus_route_way_ids = load_bus_route_way_ids()
+
+    if process_osm_file(input_file, output_file, additional_skip_relations, bus_route_way_ids):
         print("OSM file processing completed successfully.")
     else:
         print("OSM file processing failed.")
