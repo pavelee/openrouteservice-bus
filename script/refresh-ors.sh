@@ -8,12 +8,17 @@
 #   3. Poprawki prywatnych dróg (fix_private_roads.py)
 #   4. Uruchamia ors-builder z profilu compose i czeka aż zbuduje grafy do graphs_staging/
 #   5. Zatrzymuje buildera, robi atomic swap (graphs → graphs_old, graphs_staging → graphs)
-#   6. Restartuje ors-app, czeka aż wstanie z nowymi grafami
+#   6. `docker rollout ors-app` — stawia nowy kontener obok starego (już z podmienionym
+#      grafem, bo dzieli ten sam bind mount), czeka aż przejdzie healthcheck, dopiero
+#      wtedy gasi stary. Stary kontener cały czas serwuje ruch na starym grafie z pamięci.
 #   7. Na sukces — sprząta. Na błąd po swapie — ROLLBACK do graphs_old.
 #
-# Downtime ors-app ≈ czas restartu (~30–60 s). Build (~15–30 min) idzie obok produkcji.
+# Zero-downtime ors-app (patrz docker-compose.yml + README.md "Zero-downtime deploy").
+# Build (~15–30 min) idzie obok produkcji, sam rollout to tyle ile trwa załadowanie
+# nowego grafu (do ORS_APP_TIMEOUT).
 #
-# Wymagania: docker, wget, venv pod script/env/ z osmium + lxml.
+# Wymagania: docker, wget, venv pod script/env/ z osmium + lxml, plugin `docker-rollout`
+# zainstalowany jako `docker rollout` (patrz README.md).
 
 set -euo pipefail
 
@@ -22,6 +27,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${ORS_ROOT}/docker-compose.yml"
+
+# Repo root compose (definiuje faktyczny produkcyjny ors-app + traefik).
+# COMPOSE_FILE (submodule) służy tylko do ors-builder (profil "builder").
+ROOT_COMPOSE_FILE="$(cd "${ORS_ROOT}/.." && pwd)/docker-compose.yml"
 
 ORS_DOCKER="${ORS_ROOT}/ors-docker"
 FILES_DIR="${ORS_DOCKER}/files"
@@ -47,7 +56,7 @@ ORS_APP_HEALTH_URL="http://localhost:8080/ors/v2/health"
 # Timeouty
 BUILDER_TIMEOUT=3600    # 60 min na build grafów
 BUILDER_POLL=30
-ORS_APP_TIMEOUT=300     # 5 min na restart ors-app
+ORS_APP_TIMEOUT=300     # 5 min na `docker rollout` (healthcheck nowej repliki ors-app)
 ORS_APP_POLL=5
 
 # Stan dla rollbacka — czy zdążyliśmy podmienić katalogi
@@ -72,8 +81,6 @@ fi
 rollback() {
     err "ROLLBACK: przywracam poprzedni stan"
 
-    docker stop ors-app >/dev/null 2>&1 || true
-
     if [ -d "${GRAPHS_OLD}" ]; then
         rm -rf "${GRAPHS_DIR}.failed" 2>/dev/null || true
         [ -d "${GRAPHS_DIR}" ] && mv "${GRAPHS_DIR}" "${GRAPHS_DIR}.failed"
@@ -88,10 +95,14 @@ rollback() {
         log "✓ XML przywrócony (failed wersja w mazowieckie.osm.failed)"
     fi
 
-    log "Uruchamiam ors-app po rollbacku..."
-    docker start ors-app >/dev/null 2>&1 \
-        || docker compose -f "${COMPOSE_FILE}" up -d ors-app >/dev/null 2>&1 \
-        || err "Nie udało się uruchomić ors-app — wymagana ręczna interwencja"
+    # `docker rollout` na niepowodzeniu healthchecka sam usuwa niezdrową nową
+    # replikę i zostawia starą (wciąż serwującą ze starego grafu w pamięci)
+    # działającą. Dla pewności wymuszamy dokładnie 1 replikę na (teraz
+    # przywróconych) plikach, niezależnie w jakim stanie rollout się urwał —
+    # scale-down usuwa replikę o wyższym indeksie, czyli tę nowszą/niezdrową.
+    log "Wymuszam dokładnie 1 zdrową replikę ors-app po rollbacku..."
+    docker compose -f "${ROOT_COMPOSE_FILE}" up -d --scale ors-app=1 ors-app >/dev/null 2>&1 \
+        || err "Nie udało się przywrócić ors-app — wymagana ręczna interwencja"
 
     err "ROLLBACK ZAKOŃCZONY. Sprawdź ors-app i pliki *.failed."
 }
@@ -241,33 +252,31 @@ fi
 mv "${XML_PROCESSED}" "${PROD_XML}"
 log "✓ mazowieckie.osm podmieniony (backup w .prev)"
 
-# ============================== 6. Restart ors-app ===========================
+# ============================== 6. Rollout ors-app (zero-downtime) ===========
 
-step "6/6 Restart ors-app i weryfikacja"
+step "6/6 Rollout ors-app (zero-downtime) i weryfikacja"
 
-# Wolimy `docker restart <name>` — działa niezależnie od tego z którego
-# compose-projektu (root czy submodule) ors-app był uruchomiony. Fallback
-# tylko gdy kontener nie istnieje (np. świeży deploy).
-if ! docker restart ors-app >/dev/null 2>&1; then
-    log "ors-app nie istnieje — uruchamiam przez compose"
-    docker compose -f "${COMPOSE_FILE}" up -d ors-app
-fi
+# `docker rollout` stawia nowy kontener ors-app obok starego — dzieli ten sam
+# bind mount, więc od razu widzi grafy podmienione w kroku 5. Czeka aż przejdzie
+# healthcheck z docker-compose.yml (sprawdza "status":"ready", nie tylko HTTP 200),
+# dopiero wtedy gasi stary kontener. Stary serwuje ruch bez przerwy przez cały czas.
+log "docker rollout ors-app (timeout ${ORS_APP_TIMEOUT}s)..."
+docker rollout --timeout "${ORS_APP_TIMEOUT}" -f "${ROOT_COMPOSE_FILE}" ors-app
 
-log "Czekam aż ors-app będzie ready (timeout ${ORS_APP_TIMEOUT}s, endpoint ${ORS_APP_HEALTH_URL})..."
+log "Weryfikacja end-to-end przez ${ORS_APP_HEALTH_URL} (przez traefik)..."
 start_ts=$(date +%s)
 while true; do
     elapsed=$(( $(date +%s) - start_ts ))
-    if [ ${elapsed} -gt ${ORS_APP_TIMEOUT} ]; then
-        err "Timeout uruchomienia ors-app po ${elapsed}s"
+    if [ ${elapsed} -gt 30 ]; then
+        err "ors-app nie odpowiada 'ready' przez publiczny endpoint mimo udanego rollout"
         exit 1
     fi
 
     if wget -qO- "${ORS_APP_HEALTH_URL}" 2>/dev/null | grep -q '"status":"ready"'; then
-        log "✓ ors-app READY po ${elapsed}s"
+        log "✓ ors-app READY (weryfikacja end-to-end, ${elapsed}s)"
         break
     fi
 
-    log "  ... ors-app wstaje (${elapsed}s)"
     sleep ${ORS_APP_POLL}
 done
 
