@@ -53,6 +53,17 @@ LOCK_DIR="/tmp/traska-refresh-ors.lock"
 # Endpoint do healthchecka ORS (z poziomu hosta, dla ors-app)
 ORS_APP_HEALTH_URL="http://localhost:8080/ors/v2/health"
 
+# Rejestr interwencji routingowych (aplikacja web) — źródło syntetycznych way'ów dla
+# fix_private_roads.py i cel callbacku "baked" po udanym rollout. CRON_SECRET bierzemy
+# z env, a gdy brak — z web/.env. Wszystko nieblokujące: brak sekretu/API = build
+# z samym bootstrapem SYNTHETIC_WAYS (patrz load_synthetic_ways w fix_private_roads.py).
+TRASKA_APP_URL="${TRASKA_APP_URL:-http://localhost:3000}"
+WEB_ENV_FILE="$(cd "${ORS_ROOT}/.." && pwd)/web/.env"
+if [ -z "${CRON_SECRET:-}" ] && [ -f "${WEB_ENV_FILE}" ]; then
+    CRON_SECRET="$(grep -E '^CRON_SECRET=' "${WEB_ENV_FILE}" | head -1 | cut -d= -f2- | tr -d '"' || true)"
+fi
+SYNTHETIC_WAYS_MANIFEST="${STAGING_DIR}/synthetic-ways-manifest.json"
+
 # Timeouty
 BUILDER_TIMEOUT=3600    # 60 min na build grafów
 BUILDER_POLL=30
@@ -167,7 +178,10 @@ rm -f "${PBF_FILE}"
 step "3/6 Poprawki prywatnych dróg i ręcznych korekt"
 # fix_private_roads.py pyta input() jeśli plik istnieje → usuwamy proaktywnie
 rm -f "${XML_PROCESSED}"
-"${VENV_PYTHON}" "${SCRIPT_DIR}/fix_private_roads.py" "${XML_RAW}" "${XML_PROCESSED}"
+TRASKA_APP_URL="${TRASKA_APP_URL}" \
+CRON_SECRET="${CRON_SECRET:-}" \
+SYNTHETIC_WAYS_MANIFEST="${SYNTHETIC_WAYS_MANIFEST}" \
+    "${VENV_PYTHON}" "${SCRIPT_DIR}/fix_private_roads.py" "${XML_RAW}" "${XML_PROCESSED}"
 [ -f "${XML_PROCESSED}" ] || { err "Brak ${XML_PROCESSED} po fix_private_roads"; exit 1; }
 log "✓ Przetworzono: $(du -h "${XML_PROCESSED}" | cut -f1)"
 
@@ -279,6 +293,23 @@ while true; do
 
     sleep ${ORS_APP_POLL}
 done
+
+# ============================== Callback "baked" =============================
+
+# Graf z syntetycznymi way'ami serwuje ruch — dopiero TERAZ wolno oznaczyć je jako
+# BAKED w rejestrze interwencji (uzbraja bramki czasowe w routingu aplikacji).
+# Nieblokujące: błąd = way'e zostają PENDING i zostaną oznaczone przy kolejnym refreshu.
+if [ -f "${SYNTHETIC_WAYS_MANIFEST}" ] && [ -n "${CRON_SECRET:-}" ]; then
+    step "Callback baked do rejestru interwencji"
+    if wget -qO- --header="Authorization: Bearer ${CRON_SECRET}" \
+            --header="Content-Type: application/json" \
+            --post-file="${SYNTHETIC_WAYS_MANIFEST}" \
+            "${TRASKA_APP_URL}/api/routing-interventions/synthetic-ways/baked" >/dev/null 2>&1; then
+        log "✓ Rejestr interwencji powiadomiony (baked)"
+    else
+        err "Nie udało się powiadomić rejestru interwencji (baked) — way'e zostają PENDING (nieblokujące)"
+    fi
+fi
 
 # ============================== Cleanup po sukcesie ==========================
 

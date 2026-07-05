@@ -6,9 +6,85 @@ This script uses lxml for efficient XML parsing with low memory usage and ensure
 
 import sys
 import os
+import json
 import subprocess
 import time
+import urllib.request
 from lxml import etree
+
+# Syntetyczne way'e dokładane do mapy — tymczasowa organizacja ruchu, której NIE MA w OSM.
+# Miasto przy remontach otwiera "kanały nawrotki" (przejazd przez pas rozdzielający),
+# fizycznie nieistniejące na mapie. Way dostaje sztuczne ID (pula 999xxxxxxx, poza zakresem
+# realnych OSM) i MUSI referować ISTNIEJĄCE węzły obu jezdni (nd), inaczej graf się nie
+# połączy. Wstrzykiwane przed pierwszą <relation> (czyli po wszystkich nodach i way'ach).
+#
+# ŹRÓDŁO PRAWDY: rejestr interwencji routingowych w aplikacji web
+# (GET /api/routing-interventions/synthetic-ways, patrz load_synthetic_ways() i projekt
+# memory/routing-interventions-design.md). Nawrotki są self-gating (router nie bierze
+# zawrotki, gdy przejazd prosty otwarty), więc siedzą w grafie NA STAŁE — okna czasowe
+# remontów obsługuje aplikacja per request przez options.avoid_polygons, BEZ rebuildu.
+#
+# Lista poniżej to bootstrap/awaryjny fallback, gdy API nie odpowiada podczas refreshu —
+# krytyczne nawrotki nie mogą zniknąć z grafu, bo aktywne zamknięcia na nich polegają.
+#
+# 9990000001 — zawrotka za peronem MUZEUM NARODOWE 06 (remont torowiska na przejazdach
+#   przez Rondo de Gaulle'a, WTP 6-12.07.2026; samo zamknięcie ronda = rekord CLOSURE
+#   w rejestrze, NIE w tym skrypcie). Jezdnia wsch. Al. Jerozolimskich (węzeł 2309309019
+#   na way 229399403) → jezdnia zach. (węzeł 10615716693 na way 229399405), ~21 m przez
+#   pas rozdzielający. psv=yes → bus$preferred, bez kar.
+SYNTHETIC_WAYS = [
+    {
+        'id': '9990000001',
+        'nds': ['2309309019', '10615716693'],
+        'tags': {
+            'highway': 'tertiary',
+            'oneway': 'yes',
+            'psv': 'yes',
+            'name': 'Zawrotka za peronem Muzeum Narodowe 06 (remont Rondo de Gaulle\'a)',
+        },
+    },
+]
+
+def load_synthetic_ways():
+    """Pobiera zatwierdzone syntetyczne way'e z rejestru interwencji routingowych
+    (aplikacja web) i skleja z bootstrapowym SYNTHETIC_WAYS (dedup po way id, rejestr
+    wygrywa). Zapisuje manifest interventionId do pliku wskazanego przez
+    SYNTHETIC_WAYS_MANIFEST (refresh-ors.sh POST-uje go na /baked po udanym rollout).
+    Błąd/API niedostępne -> tylko bootstrap, NIE przerywa builda (wzorzec
+    load_bus_route_way_ids)."""
+    ways = {w['id']: w for w in SYNTHETIC_WAYS}
+    intervention_ids = []
+    app_url = os.environ.get('TRASKA_APP_URL', 'http://localhost:3000')
+    secret = os.environ.get('CRON_SECRET')
+    if not secret:
+        print('WARN: brak CRON_SECRET w env — syntetyczne way\'e tylko z bootstrapu')
+    else:
+        try:
+            req = urllib.request.Request(
+                f'{app_url}/api/routing-interventions/synthetic-ways',
+                headers={'Authorization': f'Bearer {secret}'},
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                payload = json.load(resp)
+            for entry in payload.get('syntheticWays', []):
+                way_def = entry.get('wayDef') or {}
+                if way_def.get('id') and way_def.get('nds') and way_def.get('tags'):
+                    ways[way_def['id']] = way_def
+                    intervention_ids.append(entry.get('interventionId'))
+            print(f"✓ Loaded {len(intervention_ids)} synthetic ways z rejestru interwencji")
+        except Exception as e:
+            print(f'WARN: rejestr interwencji niedostępny ({e}) — syntetyczne way\'e tylko z bootstrapu')
+
+    manifest_path = os.environ.get('SYNTHETIC_WAYS_MANIFEST')
+    if manifest_path:
+        try:
+            with open(manifest_path, 'w') as f:
+                json.dump({'ids': [i for i in intervention_ids if isinstance(i, int)]}, f)
+            print(f'✓ Manifest baked zapisany: {manifest_path}')
+        except Exception as e:
+            print(f'WARN: nie udało się zapisać manifestu baked: {e}')
+
+    return list(ways.values())
 
 def load_bus_route_way_ids():
     """Wczytuje zbiór way_id z PostGIS bus_route_ways (cron/osm2pgsql/import/bus_routes.lua) —
@@ -34,13 +110,16 @@ def load_bus_route_way_ids():
         print(f"WARN: bus_route_ways query failed non-fatally: {e}")
         return set()
 
-def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way_ids=None):
+def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way_ids=None,
+                     synthetic_ways=None):
     """Process OSM file using streaming parsing to ensure valid XML output."""
 
     if skip_relations is None:
         skip_relations = []
     if bus_route_way_ids is None:
         bus_route_way_ids = set()
+    if synthetic_ways is None:
+        synthetic_ways = list(SYNTHETIC_WAYS)
     
     # Check if input file exists
     if not os.path.isfile(input_file):
@@ -68,9 +147,10 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
     try:
         # Create a custom handler to process the XML
         class OSMHandler:
-            def __init__(self, output_file, bus_route_way_ids=None):
+            def __init__(self, output_file, bus_route_way_ids=None, synthetic_ways=None):
                 self.output_file = output_file
                 self.bus_route_way_ids = bus_route_way_ids or set()
+                self.synthetic_ways = synthetic_ways or []
                 self.current_way = None
                 self.current_relation = None
                 self.in_way = False
@@ -80,6 +160,7 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                 self.modified_count = 0
                 self.skipped_relations = 0
                 self.depth = 0
+                self.synthetic_ways_written = False
                 
                 # 1963216 - zakręt w lewo w piękną (obok sejmu) np. 131
                 # 9166265 - no_left_turn Patriotów(377954285)->Bysławska(507958952) via węzeł 4973651213.
@@ -129,6 +210,11 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                 
                 # Handle relation elements
                 elif name == 'relation':
+                    # Relacje idą po way'ach — to ostatni moment na dołożenie
+                    # syntetycznych way'ów (SYNTHETIC_WAYS), których nie ma w OSM.
+                    if not self.synthetic_ways_written:
+                        self._write_synthetic_ways()
+
                     self.in_relation = True
                     self.current_relation = attrs.get('id', '')
                     
@@ -337,6 +423,9 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                 
                 # Handle root element
                 elif self.depth == 1:
+                    # Fallback: plik bez relacji — dołóż syntetyczne way'e przed zamknięciem roota
+                    if not self.synthetic_ways_written:
+                        self._write_synthetic_ways()
                     self.out.write(f'</{name}>'.encode('utf-8'))
                 
                 # Handle other elements (not way, nd, tag, member)
@@ -352,6 +441,19 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                     indent = '  ' * self.depth
                     self.out.write(f'{indent}{self._escape_text(content)}\n'.encode('utf-8'))
             
+            def _write_synthetic_ways(self):
+                """Dokłada way'e z SYNTHETIC_WAYS (tymczasowe kanały nawrotki itp.).
+                Węzły (nd) muszą już istnieć w pliku — referujemy istniejące node'y OSM."""
+                for sw in self.synthetic_ways:
+                    self.out.write(f'  <way id="{sw["id"]}" version="1">\n'.encode('utf-8'))
+                    for nd in sw['nds']:
+                        self.out.write(f'    <nd ref="{nd}"/>\n'.encode('utf-8'))
+                    for k, v in sw['tags'].items():
+                        self.out.write(f'    <tag k="{self._escape_attr(k)}" v="{self._escape_attr(v)}"/>\n'.encode('utf-8'))
+                    self.out.write(b'  </way>\n')
+                    print(f"Injected synthetic way {sw['id']} ({sw['tags'].get('name', 'bez nazwy')})")
+                self.synthetic_ways_written = True
+
             def close(self):
                 if hasattr(self, 'out') and self.out:
                     self.out.close()
@@ -369,7 +471,8 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                 return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         
         # Create our handler
-        handler = OSMHandler(output_file, bus_route_way_ids=bus_route_way_ids)
+        handler = OSMHandler(output_file, bus_route_way_ids=bus_route_way_ids,
+                             synthetic_ways=synthetic_ways)
         
         # Print information about relations to be skipped
         if handler.skip_relations:
@@ -451,8 +554,10 @@ if __name__ == "__main__":
         additional_skip_relations = [rid.strip() for rid in relation_ids if rid.strip()]
 
     bus_route_way_ids = load_bus_route_way_ids()
+    synthetic_ways = load_synthetic_ways()
 
-    if process_osm_file(input_file, output_file, additional_skip_relations, bus_route_way_ids):
+    if process_osm_file(input_file, output_file, additional_skip_relations, bus_route_way_ids,
+                        synthetic_ways):
         print("OSM file processing completed successfully.")
     else:
         print("OSM file processing failed.")
