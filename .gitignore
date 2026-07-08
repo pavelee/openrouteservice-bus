@@ -46,4 +46,4 @@ docs/.vitepress/cache
 gatling-results/**
 
 *.pbf
-*.osm
+*.osmscript/__pycache__/
