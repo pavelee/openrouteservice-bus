@@ -14,9 +14,6 @@
 package org.heigit.ors.routing.graphhopper.extensions.flagencoders;
 
 import com.graphhopper.reader.ReaderWay;
-import com.graphhopper.reader.osm.conditional.ConditionalOSMSpeedInspector;
-import com.graphhopper.reader.osm.conditional.ConditionalParser;
-import com.graphhopper.reader.osm.conditional.DateRangeParser;
 import com.graphhopper.routing.ev.DecimalEncodedValue;
 import com.graphhopper.routing.ev.EncodedValue;
 import com.graphhopper.routing.ev.UnsignedDecimalEncodedValue;
@@ -44,8 +41,6 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
     protected final HashSet<String> forwardKeys = new HashSet<>(5);
     protected final HashSet<String> backwardKeys = new HashSet<>(5);
     protected final List<String> hgvAccess = new ArrayList<>(5);
-    // Lista tagów dostępu specyficznych dla autobusów i transportu publicznego
-    protected final List<String> busAccess = new ArrayList<>(5);
 
     private static final int MEAN_SPEED = 70;
 
@@ -81,20 +76,8 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
         intendedValues.add("bus");
         intendedValues.add("hgv");
         intendedValues.add(VAL_GOODS);
-        intendedValues.add("psv");
-        intendedValues.add("public_transport");
-
-        restrictedValues.add(VAL_AGRICULTURAL);
-        restrictedValues.add(VAL_FORESTRY);
-        restrictedValues.add("emergency");
-
-        blockByDefaultBarriers.add("sump_buster");
-
-        // Bus traps are designed to let buses through
-        passByDefaultBarriers.add("bus_trap");
 
         hgvAccess.addAll(Arrays.asList("hgv", VAL_GOODS, "bus", VAL_AGRICULTURAL, VAL_FORESTRY, "delivery"));
-        busAccess.addAll(Arrays.asList("bus", "psv", "public_transport"));
 
         // Override default speeds with lower values
         trackTypeSpeedMap.put("grade1", 40); // paved
@@ -127,17 +110,6 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
         backwardKeys.add("agricultural:backward");
         backwardKeys.add("forestry:backward");
         backwardKeys.add("delivery:backward");
-
-        backwardKeys.add("psv:backward");
-        forwardKeys.add("psv:forward");
-    }
-
-    @Override
-    protected void init(DateRangeParser dateRangeParser) {
-        super.init(dateRangeParser);
-        ConditionalOSMSpeedInspector conditionalOSMSpeedInspector = new ConditionalOSMSpeedInspector(List.of("maxspeed"));
-        conditionalOSMSpeedInspector.addValueParser(ConditionalParser.createDateTimeParser());
-        setConditionalSpeedInspector(conditionalOSMSpeedInspector);
     }
 
     @Override
@@ -149,35 +121,18 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
 
     @Override
     public double getMaxSpeed(ReaderWay way) {
-        // Sprawdzamy czy jest specjalny limit prędkości dla autobusów
-        double maxSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:bus"));
+        double maxSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:hgv"));
 
-        double fwdSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:bus:forward"));
+        double fwdSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:hgv:forward"));
         if (isValidSpeed(fwdSpeed) && (!isValidSpeed(maxSpeed) || fwdSpeed < maxSpeed)) {
             maxSpeed = fwdSpeed;
         }
 
-        double backSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:bus:backward"));
+        double backSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:hgv:backward"));
         if (isValidSpeed(backSpeed) && (!isValidSpeed(maxSpeed) || backSpeed < maxSpeed)) {
             maxSpeed = backSpeed;
         }
 
-        // Fallback na maxspeed:hgv
-        if (!isValidSpeed(maxSpeed)) {
-            maxSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:hgv"));
-
-            fwdSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:hgv:forward"));
-            if (isValidSpeed(fwdSpeed) && (!isValidSpeed(maxSpeed) || fwdSpeed < maxSpeed)) {
-                maxSpeed = fwdSpeed;
-            }
-
-            backSpeed = OSMValueExtractor.stringToKmh(way.getTag("maxspeed:hgv:backward"));
-            if (isValidSpeed(backSpeed) && (!isValidSpeed(maxSpeed) || backSpeed < maxSpeed)) {
-                maxSpeed = backSpeed;
-            }
-        }
-
-        // Fallback na standardowy maxspeed
         if (!isValidSpeed(maxSpeed)) {
             maxSpeed = super.getMaxSpeed(way);
             if (isValidSpeed(maxSpeed)) {
@@ -218,15 +173,34 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             return EncodingManager.Access.CAN_SKIP;
         }
 
-        // Obsługa tagu routing:ztm - specjalny tag do sterowania trasami ZTM
+        // paving_stone
+        String surfaceTag = way.getTag("surface");
+        if (surfaceTag != null) {
+            if ("paving_stone".equals(surfaceTag)) {
+                return EncodingManager.Access.CAN_SKIP;
+            }
+        }
+
+        // bus ?
         String ztmRouteTag = way.getTag("routing:ztm");
         if (ztmRouteTag != null) {
             if ("no".equals(ztmRouteTag)) {
                 return EncodingManager.Access.CAN_SKIP;
             }
+            // if ("yes".equals(ztmRouteTag)) {
+            //     return EncodingManager.Access.WAY;
+            // }
         }
 
-        // Pomijamy drogi serwisowe prowadzące na parkingi
+        // oneway PSV WE CAN GO THERE!
+        String oneWayPsv = way.getTag("oneway:psv");
+        if (oneWayPsv != null) {
+            if ("no".equals(oneWayPsv)) {
+                return EncodingManager.Access.WAY;
+            }
+        }
+
+        // we ommit ways to parking_aisle
         String serviceTag = way.getTag("service");
         if (serviceTag != null) {
             if ("parking_aisle".equals(serviceTag)) {
@@ -234,7 +208,7 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             }
         }
 
-        // Pomijamy podjazdy
+        // we ommit driveways
         if (serviceTag != null) {
             if ("driveway".equals(serviceTag)) {
                 return EncodingManager.Access.CAN_SKIP;
@@ -255,88 +229,38 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
             return EncodingManager.Access.CAN_SKIP;
 
         // multiple restrictions needs special handling compared to foot and bike, see also motorcycle
-        boolean carsAllowed = way.hasTag(restrictions, intendedValues);
         for (String restrictionValue : restrictionValues) {
             if (!restrictionValue.isEmpty()) {
-                if (restrictedValues.contains(restrictionValue) && !getConditionalTagInspector().isRestrictedWayConditionallyPermitted(way))
-                    return EncodingManager.Access.CAN_SKIP;
+                if (restrictedValues.contains(restrictionValue))
+                    return isRestrictedWayConditionallyPermitted(way);
                 if (intendedValues.contains(restrictionValue))
                     return EncodingManager.Access.WAY;
             }
         }
 
-        // Sprawdzenie dostępu - jeśli droga ma ograniczenia, ale autobus/hgv ma specjalne uprawnienia
-        if (way.hasTag(restrictions, restrictedValues) && !carsAllowed && !way.hasTag(hgvAccess, intendedValues) && !way.hasTag(busAccess, intendedValues)) {
-            return EncodingManager.Access.CAN_SKIP;
-        }
-
         // do not drive street cars into fords
+        boolean carsAllowed = way.hasTag(restrictions, intendedValues);
         if (isBlockFords() && ("ford".equals(highwayValue) || way.hasTag("ford")) && !carsAllowed)
             return EncodingManager.Access.CAN_SKIP;
 
-        // maxwidth filter przeniesiony do options.profile_params.restrictions.width
-        // w web/app/_service/directions/orsBusCustomModel.ts (BUS_RESTRICTIONS)
-
-        if (getConditionalTagInspector().isPermittedWayConditionallyRestricted(way))
+        // check access restrictions
+        // filter special type of access for hgv
+        if (way.hasTag(restrictions, restrictedValues) && !carsAllowed && !way.hasTag(hgvAccess, intendedValues)) {
             return EncodingManager.Access.CAN_SKIP;
-        else
-            return EncodingManager.Access.WAY;
-    }
-
-    /**
-     * Mnożniki prędkości highway-based przeniesione do custom_model po stronie klienta —
-     * patrz BUS_CUSTOM_MODEL.speed w orsBusCustomModel.ts.
-     *
-     * Bonusy dla bus_guideway (1.8x) i bus/psv=designated (1.6x) zostają tu do czasu
-     * fazy 3 refaktoru (rejestracja BooleanEncodedValue bus_priority), bo custom_model
-     * nie umie warunkować na tych tagach bez własnego EncodedValue.
-     */
-    @Override
-    protected double getSpeed(ReaderWay way) {
-        String highway = way.getTag(KEY_HIGHWAY);
-        double speed = super.getSpeed(way);
-
-        if ("bus_guideway".equals(highway) || way.hasTag("bus_guideway", "yes")) {
-            return speed * 1.8;
         }
 
-        if (way.hasTag("bus", VAL_DESIGNATED) || way.hasTag("psv", VAL_DESIGNATED)) {
-            return speed * 1.6;
-        }
-
-        return speed;
-    }
-
-    /**
-     * Override oneway detection for bus/PSV exemptions.
-     * Buses can go against one-way when oneway:psv=no, oneway:bus=no,
-     * or when bus:backward/psv:backward is explicitly allowed on a forward oneway.
-     */
-    @Override
-    protected boolean isOneway(ReaderWay way) {
-        // PSV/bus exempt from one-way restriction
-        if (way.hasTag("oneway:psv", "no") || way.hasTag("oneway:bus", "no")) {
-            return false;
-        }
-
-        if (super.isOneway(way)) {
-            boolean isReverseOneway = way.hasTag("oneway", "-1");
-
-            if (isReverseOneway) {
-                // Reverse oneway: if bus/psv has forward access → bidirectional
-                if (way.hasTag(new ArrayList<>(forwardKeys), intendedValues)) {
-                    return false;
-                }
-            } else {
-                // Forward oneway: if bus/psv has backward access → bidirectional
-                if (way.hasTag(new ArrayList<>(backwardKeys), intendedValues)) {
-                    return false;
-                }
+        String maxwidth = way.getTag("maxwidth"); // Runge added on 23.02.2016
+        if (maxwidth != null) {
+            try {
+                double mwv = Double.parseDouble(maxwidth);
+                if (mwv < 2.0)
+                    return EncodingManager.Access.CAN_SKIP;
+            } catch (Exception ex) {
+                // do nothing
             }
-            return true;
         }
 
-        return false;
+        return isPermittedWayConditionallyRestricted(way);
     }
 
     @Override
@@ -357,13 +281,67 @@ public class HeavyVehicleFlagEncoder extends VehicleFlagEncoder {
     }
 
     /**
-     * Highway-based priorytety przeniesione do BUS_CUSTOM_MODEL.priority w orsBusCustomModel.ts.
-     * Tutaj wszystkie krawędzie dostają BEST jako neutralny baseline — custom_model
-     * nakłada faktyczne preferencje per-request. Pozwala to tunować priorytety bez
-     * rebuildu grafu / kontenera ORS.
+     * @param weightToPrioMap associate a weight with every priority. This sorted map allows
+     *                        subclasses to 'insert' more important priorities as well as
+     *                        overwrite determined priorities.
      */
-    protected void collect(ReaderWay way, TreeMap<Double, Integer> weightToPrioMap) {
-        weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
+    protected void collect(ReaderWay way, TreeMap<Double, Integer> weightToPrioMap) { // Runge
+        if (way.hasTag("hgv", VAL_DESIGNATED) || (way.hasTag("access", VAL_DESIGNATED) && (way.hasTag(VAL_GOODS, "yes") || way.hasTag("hgv", "yes") || way.hasTag("bus", "yes") || way.hasTag(VAL_AGRICULTURAL, "yes") || way.hasTag(VAL_FORESTRY, "yes"))))
+            weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
+        else {
+            String highway = way.getTag(KEY_HIGHWAY);
+            double maxSpeed = getMaxSpeed(way);
+
+            if (!Helper.isEmpty(highway)) {
+                switch (highway) {
+                    case "motorway":
+                    case "motorway_link":
+                    case "trunk":
+                    case "trunk_link":
+                        weightToPrioMap.put(100d, PriorityCode.BEST.getValue());
+                        break;
+                    case "primary":
+                    case "primary_link":
+                    case "secondary":
+                    case "secondary_link":
+                        weightToPrioMap.put(100d, PriorityCode.PREFER.getValue());
+                        break;
+                    case "tertiary":
+                    case "tertiary_link":
+                        weightToPrioMap.put(100d, PriorityCode.UNCHANGED.getValue());
+                        break;
+                    case "residential":
+                    case "service":
+                    case "road":
+                    case "unclassified":
+                        if (isValidSpeed(maxSpeed) && maxSpeed <= 30) {
+                            weightToPrioMap.put(120d, PriorityCode.REACH_DEST.getValue());
+                        } else {
+                            weightToPrioMap.put(100d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
+                        }
+                        break;
+                    case "living_street":
+                        weightToPrioMap.put(100d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
+                        break;
+                    case VAL_TRACK:
+                        weightToPrioMap.put(100d, PriorityCode.REACH_DEST.getValue());
+                        break;
+                    default:
+                        weightToPrioMap.put(40d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
+                        break;
+                }
+            } else {
+                weightToPrioMap.put(100d, PriorityCode.UNCHANGED.getValue());
+            }
+
+            if (isValidSpeed(maxSpeed)) {
+                // We assume that the given road segment goes through a settlement.
+                if (maxSpeed <= 40)
+                    weightToPrioMap.put(110d, PriorityCode.AVOID_IF_POSSIBLE.getValue());
+                else if (maxSpeed <= 50)
+                    weightToPrioMap.put(110d, PriorityCode.UNCHANGED.getValue());
+            }
+        }
     }
 
     @Override

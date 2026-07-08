@@ -155,12 +155,10 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
         print(f"Error: Input file '{input_file}' does not exist.")
         return False
     
-    # Check if output file already exists
+    # Nadpisujemy istniejący plik wyjściowy bez pytania — skrypt biegnie w
+    # automatyzacji (refresh-ors.sh); interaktywny prompt wieszał pipeline.
     if os.path.isfile(output_file):
-        response = input(f"Warning: Output file '{output_file}' already exists. Do you want to overwrite it? (y/n): ")
-        if response.lower() != 'y':
-            print("Operation cancelled.")
-            return False
+        print(f"Output file '{output_file}' already exists — overwriting.")
     
     # Get file size for progress reporting
     file_size = os.path.getsize(input_file)

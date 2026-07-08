@@ -1,12 +1,11 @@
-## Skrypt modyfikacji mapy OSM
+# Skrypty mapy OSM i refreshu ORS
 
-### Pełen refresh produkcji (ZALECANE) — `refresh-ors.sh`
+## Pełen refresh produkcji (ZALECANE) — `refresh-ors.sh`
 
-Jeden skrypt który robi wszystko: pobiera świeży PBF, konwertuje, poprawia
-prywatne drogi, **buduje nowe grafy ORS w izolowanym kontenerze** (`ors-builder`
-z profilu compose), robi atomic swap katalogów i restartuje `ors-app`. Stary
-ors-app serwuje przez cały czas builda — downtime tylko podczas finalnego
-restartu (~30–60 s).
+Jeden skrypt który robi wszystko: pobiera świeży PBF, konwertuje, nakłada
+transformacje mapy (interwencje z rejestru), **buduje nowe grafy ORS w
+izolowanym kontenerze** (`ors-builder` z profilu compose), robi atomic swap
+katalogów i przełącza `ors-app` bez przerwy w serwowaniu (docker rollout).
 
 ```bash
 # Uruchomienie (z dowolnego cwd — skrypt sam ustala ścieżki)
@@ -25,63 +24,47 @@ Wymagania: `docker`, `wget`, lokalny venv pod `script/env/` (osmium + lxml).
 Czas: ~20–40 min (głównie build grafów). Można odpalić w tle:
 `nohup ./script/refresh-ors.sh > refresh.log 2>&1 &`.
 
-### Aktualizacja samego pliku XML — `update_osm.py`
+## Transformacja mapy — `fix_private_roads.py`
 
-Skrypt który automatyzuje tylko fazę przygotowania danych OSM (bez buildu
-grafów i bez restartu kontenera). Przydatny gdy chcesz wymienić sam plik
-`mazowieckie.osm` ręcznie — pełen refresh produkcji robi `refresh-ors.sh`.
+Streaming XML→XML nakładający na surową mapę OSM wszystkie modyfikacje
+build-time: blokady way'ów (WAY_BLOCK), syntetyczne way'e (nawrotki), tag
+`bus:on_route=yes` (z PostGIS `bus_route_ways`), punktowe poprawki tagów oraz
+pominięcie wskazanych relacji turn-restriction. Dane trasowe pochodzą z
+REJESTRU INTERWENCJI aplikacji web (`GET /api/routing-interventions/graph-export`)
+— w skrypcie zostają tylko bootstrapowe fallbacki na wypadek niedostępności API.
+
+Uruchamiany przez `refresh-ors.sh`; ręcznie:
 
 ```bash
-# uruchomienie środowiska python
 source env/bin/activate
-
-# Podstawowe użycie - wykonuje cały proces automatycznie
-./update_osm.py
-
-# Z szczegółowymi logami
-./update_osm.py --verbose
-
-# Test run (pokazuje co zostanie zrobione bez wykonania)
-./update_osm.py --dry-run
+./fix_private_roads.py <wejście.osm> <wyjście.osm>
 ```
 
-Skrypt automatycznie:
-1. Pobiera najnowsze dane z https://download.geofabrik.de/europe/poland/mazowieckie-latest.osm.pbf
-2. Konwertuje PBF do XML używając `convert_osm_to_xml.py`
-3. Przetwarza prywatne drogi używając `fix_private_roads.py`
-4. Tworzy backup i zastępuje plik w `../ors-docker/files/mazowieckie.osm`
-5. Czyści pliki tymczasowe
+## Walidacja tras po zmianach
 
-### Manualna aktualizacja mapy (legacy)
+Harness produkcyjny żyje w `web/` (importuje produkcyjny kod routingu — nie
+duplikuje custom_model ani bearingów):
 
-#### Wygenerowanie pliku mapy
-
-```
-chmod +x ./convert_osm_to_xml.py
+```bash
+cd ../../web
+npm run validate:route -- <ROUTE_ID> [--smart] [--steps] [--geojson out.geojson]
+npm run route:sweep -- --record   # snapshot przed zmianą
+npm run route:sweep               # porównanie po zmianie (bramka zero-diff)
+npm run test:route-regression     # suita fixtures (baseline'y w repo)
 ```
 
-sciagamy plik z https://download.geofabrik.de/europe/poland/mazowieckie.html i nazywamy go mazowieckie-latest.osm.pbf
+Dawny `validate_route.py` (duplikat logiki w Pythonie, dryfował) został
+usunięty 2026-07-08 na rzecz powyższego.
 
-```
-./convert_osm_to_xml.py
-```
+## TODO (przeniesione ze starego README)
 
-#### Usunięcie zamkniętych ulic dla ruchu (np. Nowy świat)
+- Way'e 491365793 i 171028660: rozważane dodanie `maxwidth=0.5` (= wycięcie
+  z grafu busa). 491365793 jest już zablokowany jako WAY_BLOCK
+  ("serwisówki-skróty"); 171028660 pozostaje do decyzji — jeśli aktualne,
+  dodać jako WAY_BLOCK w rejestrze interwencji (panel), nie w kodzie.
 
-```
-chmod +x ./fix_private_roads.py
-```
+## Historia
 
-```
-source env/bin/activate
-```
-
-```
-./fix_private_roads.py mazowieckie-latest.osm mazowieckie.osm
-```
-
-### poprawki do wdrożenia 
-
-Linia: 491365793 oraz 171028660 dodanie tagu:
-<tag k="maxwidth" v="0.5"/>
-
+- `update_osm.py` / `read_osm_map.py` usunięte 2026-07-08 — zastąpione w
+  całości przez `refresh-ors.sh` (miały własny, słabszy pipeline bez staging
+  i rollbacku).

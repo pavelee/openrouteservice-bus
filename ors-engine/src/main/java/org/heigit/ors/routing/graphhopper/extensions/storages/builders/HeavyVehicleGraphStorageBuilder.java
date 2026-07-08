@@ -50,7 +50,7 @@ public class HeavyVehicleGraphStorageBuilder extends AbstractGraphStorageBuilder
         motorVehicleRestrictedValues.add("restricted");
         motorVehicleRestrictedValues.add("military");
 
-        motorVehicleHgvValues.addAll(Arrays.asList("hgv", "goods", "bus", "psv", "agricultural", "forestry", "delivery"));
+        motorVehicleHgvValues.addAll(Arrays.asList("hgv", "goods", "bus", "agricultural", "forestry", "delivery"));
 
         noValues.addAll(Arrays.asList("no", "private"));
         yesValues.addAll(Arrays.asList("yes", "designated"));

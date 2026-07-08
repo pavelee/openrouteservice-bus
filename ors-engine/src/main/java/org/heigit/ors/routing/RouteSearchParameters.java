@@ -31,9 +31,7 @@ import java.time.LocalDateTime;
  */
 public class RouteSearchParameters {
 
-    // Default to BUS type - we route buses, not trucks
-    // Roads with hgv=no but bus=yes must remain accessible
-    public static final int DEFAULT_HGV_VEHICLE_TYPE = HeavyVehicleAttributes.BUS;
+    public static final int DEFAULT_HGV_VEHICLE_TYPE = HeavyVehicleAttributes.HGV;
     @Getter
     @Setter
     private String profileName;

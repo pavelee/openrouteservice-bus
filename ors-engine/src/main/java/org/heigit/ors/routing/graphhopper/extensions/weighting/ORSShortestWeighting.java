@@ -12,7 +12,16 @@ import static com.graphhopper.routing.util.EncodingManager.getKey;
 
 /**
  * ShortestWeighting with heading penalty and road class bias.
- * 
+ *
+ * ZASIĘG W PRODUKCJI (2026-07): aplikacja Traska ZAWSZE wysyła custom_model,
+ * więc ORSWeightingFactory idzie ścieżką CustomModelParser/CustomWeighting i ta
+ * klasa NIE bierze udziału w produkcyjnym routingu. Działa tylko dla surowych
+ * zapytań bez custom_model (ręczny debug). Dodatkowo ROAD_CLASS_BIAS jest dla
+ * profilu driving-bus no-opem: BusFlagEncoder.collect() daje wszystkim
+ * krawędziom BEST (priority=1.0 → mnożnik 1.0). Zostawiona świadomie, żeby
+ * debugowe zapytania bez custom_model nie robiły nawrotek na waypointach
+ * (heading penalty) — usunięcie zmieniłoby tylko zachowanie debugowania.
+ *
  * Standard ShortestWeighting treats all road types equally and ignores UNFAVORED_EDGE.
  * This version:
  * 1) Adds heading penalty for UNFAVORED_EDGE to prevent U-turns at waypoints

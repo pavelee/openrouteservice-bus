@@ -176,7 +176,7 @@ rm -f "${PBF_FILE}"
 # ============================== 3. Fix private roads =========================
 
 step "3/6 Poprawki prywatnych dróg i ręcznych korekt"
-# fix_private_roads.py pyta input() jeśli plik istnieje → usuwamy proaktywnie
+# czysty staging — usuwamy ewentualny artefakt poprzedniego biegu
 rm -f "${XML_PROCESSED}"
 TRASKA_APP_URL="${TRASKA_APP_URL}" \
 CRON_SECRET="${CRON_SECRET:-}" \

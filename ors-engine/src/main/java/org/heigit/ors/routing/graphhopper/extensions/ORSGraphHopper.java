@@ -445,9 +445,7 @@ public class ORSGraphHopper extends GraphHopperGtfs {
 
             if (profile.getVehicle().equals(FlagEncoderNames.HEAVYVEHICLE)) {
                 HeavyVehicleAttributesGraphStorage hgvStorage = GraphStorageUtils.getGraphExtension(getGraphHopperStorage(), HeavyVehicleAttributesGraphStorage.class);
-                // Use BUS type instead of HGV - we route buses, not trucks
-                // Roads with hgv=no but bus=yes must remain accessible
-                EdgeFilter hgvEdgeFilter = new HeavyVehicleEdgeFilter(HeavyVehicleAttributes.BUS, null, hgvStorage);
+                EdgeFilter hgvEdgeFilter = new HeavyVehicleEdgeFilter(HeavyVehicleAttributes.HGV, null, hgvStorage);
                 weighting = new HgvAccessWeighting(weighting, hgvEdgeFilter);
             }
 

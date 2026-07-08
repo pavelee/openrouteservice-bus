@@ -142,9 +142,13 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         restrictions.add(0, "psv");
         restrictions.add(0, "bus");
 
-        // Drogi zamknięte dla ruchu ogólnego — autobus korzysta z nich tylko przy jawnym wyjątku.
-        restrictedValues.add("private");
-        restrictedValues.add("no");
+        // Drogi zamknięte dla ruchu ogólnego — autobus korzysta z nich tylko przy jawnym
+        // wyjątku (busAllowedHere w getAccess()). "private"/"no" dziedziczone z
+        // VehicleFlagEncoder (upstream); tu dokładamy tylko "emergency".
+        // UWAGA: dopóki preprocessing mapy usuwa access=private/no globalnie
+        // (transform_osm.py, STRIP_ACCESS_TAGS), ta semantyka działa jedynie dla
+        // pozostałych kluczy restrykcji (motor_vehicle/vehicle/bus/psv) — pełne
+        // przejęcie semantyki dostępu przez enkoder to Etap 4 planu uproszczenia.
         restrictedValues.add("emergency");
 
         // Bus traps / słupki przepuszczające autobus
@@ -154,6 +158,9 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         busAccess.addAll(Arrays.asList("bus", "psv", "public_transport"));
 
         // Mapa prędkości dla autobusu miejskiego (niższa niż car/HGV: przystanki, masa, promień skrętu).
+        // LOCKSTEP: resources/services/routing/speed_limits/bus.json (sekcja "default") NADPISUJE
+        // te wartości w SpeedLimitHandler — poniższa mapa jest fallbackiem, gdy zasobu brak.
+        // Oba miejsca muszą trzymać te same wartości; zmieniasz tu → zmień też bus.json.
         defaultSpeedMap.put("motorway", 70);
         defaultSpeedMap.put("motorway_link", 50);
         defaultSpeedMap.put("motorroad", 70);
