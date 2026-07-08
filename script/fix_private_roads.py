@@ -45,23 +45,43 @@ SYNTHETIC_WAYS = [
     },
 ]
 
-def load_synthetic_ways():
-    """Pobiera zatwierdzone syntetyczne way'e z rejestru interwencji routingowych
-    (aplikacja web) i skleja z bootstrapowym SYNTHETIC_WAYS (dedup po way id, rejestr
-    wygrywa). Zapisuje manifest interventionId do pliku wskazanego przez
-    SYNTHETIC_WAYS_MANIFEST (refresh-ors.sh POST-uje go na /baked po udanym rollout).
-    Błąd/API niedostępne -> tylko bootstrap, NIE przerywa builda (wzorzec
-    load_bus_route_way_ids)."""
+# Trwałe blokady jakościowe (WAY_BLOCK w rejestrze interwencji) — way'e wycinane
+# z grafu przez highway=construction. ŹRÓDŁO PRAWDY: rejestr (panel "Interwencje").
+# Lista poniżej to bootstrap/awaryjny fallback jak SYNTHETIC_WAYS — przy niedostępnym
+# API blokady jakościowe NIE MOGĄ zniknąć z grafu (127 wróciłby na Wiślaną itd.).
+# Uzasadnienia per ulica: pole `notes` rekordów w rejestrze.
+WAY_BLOCKS_BOOTSTRAP = {
+    '20930779',                              # Wiślana (127)
+    '33276900',                              # Zagłoby (187)
+    '308031464',                             # Złota (504)
+    '341151409',                             # Kościuszki (817)
+    '888011097', '174143991', '386852929',   # Wiejska (131)
+    '860371908',                             # Tokarzewskiego-Karaszewicza (128)
+    '29571422',                              # Zawiszaków (115, za ciasna)
+    '34982097',                              # Gimnazjalna (129)
+    '206528330',                             # Rezedowa (402)
+    '114895531',                             # Wyczółki (331)
+    '506254774', '491365793',                # serwisówki-skróty
+}
+
+def load_graph_interventions():
+    """Pobiera interwencje grafowe z rejestru (aplikacja web, GET /graph-export):
+    syntetyczne way'e (nawrotki) + trwałe blokady way_id. Skleja z bootstrapami
+    (dedup, rejestr wygrywa). Zapisuje manifest interventionId do pliku wskazanego
+    przez SYNTHETIC_WAYS_MANIFEST (refresh-ors.sh POST-uje go na /graph-export/baked
+    po udanym rollout). Błąd/API niedostępne -> tylko bootstrap, NIE przerywa builda
+    (wzorzec load_bus_route_way_ids)."""
     ways = {w['id']: w for w in SYNTHETIC_WAYS}
+    block_way_ids = set(WAY_BLOCKS_BOOTSTRAP)
     intervention_ids = []
     app_url = os.environ.get('TRASKA_APP_URL', 'http://localhost:3000')
     secret = os.environ.get('CRON_SECRET')
     if not secret:
-        print('WARN: brak CRON_SECRET w env — syntetyczne way\'e tylko z bootstrapu')
+        print('WARN: brak CRON_SECRET w env — interwencje grafowe tylko z bootstrapu')
     else:
         try:
             req = urllib.request.Request(
-                f'{app_url}/api/routing-interventions/synthetic-ways',
+                f'{app_url}/api/routing-interventions/graph-export',
                 headers={'Authorization': f'Bearer {secret}'},
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
@@ -71,9 +91,16 @@ def load_synthetic_ways():
                 if way_def.get('id') and way_def.get('nds') and way_def.get('tags'):
                     ways[way_def['id']] = way_def
                     intervention_ids.append(entry.get('interventionId'))
-            print(f"✓ Loaded {len(intervention_ids)} synthetic ways z rejestru interwencji")
+            for entry in payload.get('wayBlocks', []):
+                ids = entry.get('wayIds') or []
+                if ids:
+                    block_way_ids.update(str(i) for i in ids)
+                    intervention_ids.append(entry.get('interventionId'))
+            print(f"✓ Loaded z rejestru interwencji: {len(payload.get('syntheticWays', []))} "
+                  f"synthetic ways, {len(payload.get('wayBlocks', []))} way-block rekordów "
+                  f"({len(block_way_ids)} way_id do zablokowania)")
         except Exception as e:
-            print(f'WARN: rejestr interwencji niedostępny ({e}) — syntetyczne way\'e tylko z bootstrapu')
+            print(f'WARN: rejestr interwencji niedostępny ({e}) — interwencje grafowe tylko z bootstrapu')
 
     manifest_path = os.environ.get('SYNTHETIC_WAYS_MANIFEST')
     if manifest_path:
@@ -84,7 +111,7 @@ def load_synthetic_ways():
         except Exception as e:
             print(f'WARN: nie udało się zapisać manifestu baked: {e}')
 
-    return list(ways.values())
+    return list(ways.values()), block_way_ids
 
 def load_bus_route_way_ids():
     """Wczytuje zbiór way_id z PostGIS bus_route_ways (cron/osm2pgsql/import/bus_routes.lua) —
@@ -111,7 +138,7 @@ def load_bus_route_way_ids():
         return set()
 
 def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way_ids=None,
-                     synthetic_ways=None):
+                     synthetic_ways=None, block_way_ids=None):
     """Process OSM file using streaming parsing to ensure valid XML output."""
 
     if skip_relations is None:
@@ -120,6 +147,8 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
         bus_route_way_ids = set()
     if synthetic_ways is None:
         synthetic_ways = list(SYNTHETIC_WAYS)
+    if block_way_ids is None:
+        block_way_ids = set(WAY_BLOCKS_BOOTSTRAP)
     
     # Check if input file exists
     if not os.path.isfile(input_file):
@@ -147,10 +176,16 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
     try:
         # Create a custom handler to process the XML
         class OSMHandler:
-            def __init__(self, output_file, bus_route_way_ids=None, synthetic_ways=None):
+            def __init__(self, output_file, bus_route_way_ids=None, synthetic_ways=None,
+                         block_way_ids=None):
                 self.output_file = output_file
                 self.bus_route_way_ids = bus_route_way_ids or set()
                 self.synthetic_ways = synthetic_ways or []
+                self.block_way_ids = block_way_ids or set()
+                self.blocked_count = 0
+                # Guard na reprocessing już przetworzonego pliku: way'e syntetyczne
+                # obecne w wejściu nie są wstrzykiwane ponownie (duplikat ID w OSM).
+                self.synthetic_ids_in_input = set()
                 self.current_way = None
                 self.current_relation = None
                 self.in_way = False
@@ -201,6 +236,9 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                     self.current_way = attrs.get('id', '')
                     self.is_private = False
                     self.is_residential = False
+
+                    if any(sw['id'] == self.current_way for sw in self.synthetic_ways):
+                        self.synthetic_ids_in_input.add(self.current_way)
                     
                     # Write way opening tag with attributes
                     self.out.write(f'  <{name}'.encode('utf-8'))
@@ -235,10 +273,13 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                     k = attrs.get('k', '')
                     v = attrs.get('v', '')
 
-                    # 29571422 - linia 115 i problem ścinania przejazdu przez rondo, ulica jest zbyt ciasna dla autobusu. 
-                    # 34982097 - lina 129, cholerny problem omijana oświatowej na rzecz tej uliczki gimnazjalnej.. 
-                    if self.current_way in ['29571422', '34982097'] and k == 'highway':
+                    # Trwałe blokady jakościowe z rejestru interwencji (WAY_BLOCK)
+                    # + bootstrap WAY_BLOCKS_BOOTSTRAP: way wycinany z grafu przez
+                    # highway=construction (pozostałe tagi zostają bez zmian).
+                    # Uzasadnienia per ulica: pole `notes` rekordu w rejestrze.
+                    if self.current_way in self.block_way_ids and k == 'highway':
                         self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
+                        self.blocked_count += 1
                         return
 
                     # Linia 409 / św. Wincentego przy Metro Kondratowicza: jezdnia rozdzielona ma
@@ -254,11 +295,6 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                         self.out.write(b'/>\n')
                         # dołóż wyjątek oneway dla autobusu
                         self.out.write(b'    <tag k="oneway:bus" v="no"/>\n')
-                        return
-
-                    # Wyprzedzone zablokowanie ulic z powodu remontu, OSM jeszcze nie zaktualizowany
-                    if self.current_way in ['240546186', '130694651', '96584848', '122225815'] and k == 'highway':
-                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
                         return
 
                     # Linia Z33 / route 505680, Rondo ONZ 01 → Dw. Centralny 23: wjazd na podziemny
@@ -294,38 +330,6 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                         self.out.write(b'    <tag k="oneway" v="yes"/>\n')
                         return
                     
-                    # reczne ubicie sciezki
-                    # 171028660 - czarnomorksa zakret
-                    # 206528330 - rezedowa, 402
-                    # 114895531 - Wyszczółki 331
-                    if self.current_way in ['506254774', '491365793', '206528330', '114895531'] and k == 'highway':
-                        self.out.write(f'    <{name} k="highway" v="construction"/>\n'.encode('utf-8'))
-                        return 
-
-                    # zablokowanie Zagłoby aby poprawić cholerny 187
-                    if self.current_way in ['33276900']:
-                        return
-                    
-                    # zablokowanie ZŁOTA bo cholerny 504
-                    if self.current_way in ['308031464']:
-                        return
-                
-                    # zablokowanie dla 127 WIŚLANA KURWAAWRWARAW
-                    if self.current_way in ['20930779']:
-                        return
-
-                    # zablokowanie Kościuszki bo cholerny 817
-                    if self.current_way in ['341151409']:
-                        return
-                    
-                    # zablokowanie wiejskiej - 131
-                    if self.current_way in ['888011097', '174143991', '386852929']:
-                        return
-                    
-                    # zablokowanie Generała Michała Tokarzewskiego-Karaszewicza aby autobus 128 jechał Królewską
-                    if self.current_way in ['860371908']:
-                        return
-
                     # Tag systemowy: way jest częścią ≥1 relacji OSM route=bus (bus_route_ways,
                     # zasilane przez cron/osm2pgsql/import/bus_routes.lua). Czytany przez
                     # BusFlagEncoder.isOnBusRoute() -> EV bus$on_route, zwalnia z kary
@@ -445,6 +449,9 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
                 """Dokłada way'e z SYNTHETIC_WAYS (tymczasowe kanały nawrotki itp.).
                 Węzły (nd) muszą już istnieć w pliku — referujemy istniejące node'y OSM."""
                 for sw in self.synthetic_ways:
+                    if sw['id'] in self.synthetic_ids_in_input:
+                        print(f"Skip synthetic way {sw['id']} — już obecny w pliku wejściowym")
+                        continue
                     self.out.write(f'  <way id="{sw["id"]}" version="1">\n'.encode('utf-8'))
                     for nd in sw['nds']:
                         self.out.write(f'    <nd ref="{nd}"/>\n'.encode('utf-8'))
@@ -472,7 +479,7 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
         
         # Create our handler
         handler = OSMHandler(output_file, bus_route_way_ids=bus_route_way_ids,
-                             synthetic_ways=synthetic_ways)
+                             synthetic_ways=synthetic_ways, block_way_ids=block_way_ids)
         
         # Print information about relations to be skipped
         if handler.skip_relations:
@@ -523,6 +530,7 @@ def process_osm_file(input_file, output_file, skip_relations=None, bus_route_way
         print("Statistics:")
         print(f"  - Total elements processed: {total_elements:,}")
         print(f"  - Ways modified: {modified_ways}")
+        print(f"  - Ways blocked (WAY_BLOCK): {handler.blocked_count}")
         print(f"  - Relations skipped: {handler.skipped_relations}")
         print(f"  - Processing time: {elapsed_time:.2f} seconds")
         print(f"  - Processing speed: {total_elements / elapsed_time:.2f} elements/second")
@@ -554,10 +562,10 @@ if __name__ == "__main__":
         additional_skip_relations = [rid.strip() for rid in relation_ids if rid.strip()]
 
     bus_route_way_ids = load_bus_route_way_ids()
-    synthetic_ways = load_synthetic_ways()
+    synthetic_ways, block_way_ids = load_graph_interventions()
 
     if process_osm_file(input_file, output_file, additional_skip_relations, bus_route_way_ids,
-                        synthetic_ways):
+                        synthetic_ways, block_way_ids):
         print("OSM file processing completed successfully.")
     else:
         print("OSM file processing failed.")

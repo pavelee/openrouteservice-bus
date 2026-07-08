@@ -304,7 +304,7 @@ if [ -f "${SYNTHETIC_WAYS_MANIFEST}" ] && [ -n "${CRON_SECRET:-}" ]; then
     if wget -qO- --header="Authorization: Bearer ${CRON_SECRET}" \
             --header="Content-Type: application/json" \
             --post-file="${SYNTHETIC_WAYS_MANIFEST}" \
-            "${TRASKA_APP_URL}/api/routing-interventions/synthetic-ways/baked" >/dev/null 2>&1; then
+            "${TRASKA_APP_URL}/api/routing-interventions/graph-export/baked" >/dev/null 2>&1; then
         log "✓ Rejestr interwencji powiadomiony (baked)"
     else
         err "Nie udało się powiadomić rejestru interwencji (baked) — way'e zostają PENDING (nieblokujące)"
