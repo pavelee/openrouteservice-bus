@@ -24,21 +24,36 @@ Wymagania: `docker`, `wget`, lokalny venv pod `script/env/` (osmium + lxml).
 Czas: ~20–40 min (głównie build grafów). Można odpalić w tle:
 `nohup ./script/refresh-ors.sh > refresh.log 2>&1 &`.
 
-## Transformacja mapy — `fix_private_roads.py`
+## Transformacja mapy — `transform_osm.py`
 
-Streaming XML→XML nakładający na surową mapę OSM wszystkie modyfikacje
-build-time: blokady way'ów (WAY_BLOCK), syntetyczne way'e (nawrotki), tag
-`bus:on_route=yes` (z PostGIS `bus_route_ways`), punktowe poprawki tagów oraz
-pominięcie wskazanych relacji turn-restriction. Dane trasowe pochodzą z
-REJESTRU INTERWENCJI aplikacji web (`GET /api/routing-interventions/graph-export`)
-— w skrypcie zostają tylko bootstrapowe fallbacki na wypadek niedostępności API.
+Jednoprzebiegowa transformacja PBF→PBF (PyOsmium) nakładająca na surową mapę
+OSM wszystkie modyfikacje build-time: blokady way'ów (WAY_BLOCK), punktowe
+korekty tagów (TAG_OVERRIDE), pominięcia relacji turn-restriction
+(RELATION_SKIP), syntetyczne way'e (SYNTHETIC_WAY) i tag `bus:on_route=yes`
+(z PostGIS `bus_route_ways`, przez API). Dane pochodzą z REJESTRU INTERWENCJI
+aplikacji web (`GET /api/routing-interventions/graph-export`) z fallbackiem:
+snapshot ostatniego udanego eksportu → bootstrapy w skrypcie.
 
 Uruchamiany przez `refresh-ors.sh`; ręcznie:
 
 ```bash
-source env/bin/activate
-./fix_private_roads.py <wejście.osm> <wyjście.osm>
+./env/bin/python3 transform_osm.py <wejście.osm.pbf> <wyjście.osm.pbf>
 ```
+
+`STRIP_ACCESS_TAGS=false` wyłącza historyczne globalne zdejmowanie
+`access=private/no` (Etap 4 planu uproszczenia — semantykę dostępu przejmuje
+wtedy BusFlagEncoder). Procedura flipa:
+1. `npm run route:sweep -- --record` (web, snapshot przed zmianą),
+2. `STRIP_ACCESS_TAGS=false ./script/refresh-ors.sh`,
+3. `npm run route:sweep` + `npm run test:route-regression` — każdy regres
+   (pętla/przystanek na prywatnym odcinku bez tagu bus) dostaje TAG_OVERRIDE
+   (np. `bus=yes`) w rejestrze zamiast globalnej dziury,
+4. po stabilizacji ustawić `STRIP_ACCESS_TAGS=false` na stałe w wywołaniu.
+
+Test równoważności ze starym pipeline (fixture syntetyczna):
+`./env/bin/python3 test_transform_equivalence.py`. Stare skrypty
+(`fix_private_roads.py`, `convert_osm_to_xml.py`) są DEPRECATED — do usunięcia
+po pierwszym zwalidowanym rebuildzie nowym pipeline.
 
 ## Walidacja tras po zmianach
 

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""
+"""DEPRECATED (2026-07-08): zastąpiony przez transform_osm.py (PyOsmium, PBF→PBF).
+Trzymany wyłącznie jako referencja dla test_transform_equivalence.py do czasu
+pierwszego zwalidowanego rebuilda nowym pipeline (potem do usunięcia).
+
+
 Script to process large OSM files and modify private residential roads to tertiary highways.
 This script uses lxml for efficient XML parsing with low memory usage and ensures valid XML output.
 """

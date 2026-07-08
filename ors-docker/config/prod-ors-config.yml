@@ -6,9 +6,9 @@ ors:
   engine:
     profile_default:
       build:
-        #source_file: /home/ors/files/mazowieckie-latest.osm.pbf
-        # source_file: /home/ors/files/Warsaw.osm
-        source_file: /home/ors/files/mazowieckie.osm
+        # Mapa po transformacji transform_osm.py (PBF; dawniej XML mazowieckie.osm).
+        # Builder nadpisuje tę ścieżkę env-em na staging (docker-compose ors-builder).
+        source_file: /home/ors/files/mazowieckie.osm.pbf
     profiles:
       # Wyłaczony profil poniewaz przechodzimy na driving-hgv
       # driving-car:

@@ -4,21 +4,21 @@
 #
 # Co robi (po kolei):
 #   1. Pobiera świeży PBF z Geofabrik do staging
-#   2. PBF → XML (convert_osm_to_xml.py)
-#   3. Poprawki prywatnych dróg (fix_private_roads.py)
-#   4. Uruchamia ors-builder z profilu compose i czeka aż zbuduje grafy do graphs_staging/
-#   5. Zatrzymuje buildera, robi atomic swap (graphs → graphs_old, graphs_staging → graphs)
-#   6. `docker rollout ors-app` — stawia nowy kontener obok starego (już z podmienionym
+#   2. Transformacja mapy (transform_osm.py, PBF→PBF): interwencje z rejestru
+#      (blokady, korekty tagów, pominięcia relacji, synthetic ways, bus:on_route)
+#   3. Uruchamia ors-builder z profilu compose i czeka aż zbuduje grafy do graphs_staging/
+#   4. Zatrzymuje buildera, robi atomic swap (graphs → graphs_old, graphs_staging → graphs)
+#   5. `docker rollout ors-app` — stawia nowy kontener obok starego (już z podmienionym
 #      grafem, bo dzieli ten sam bind mount), czeka aż przejdzie healthcheck, dopiero
 #      wtedy gasi stary. Stary kontener cały czas serwuje ruch na starym grafie z pamięci.
-#   7. Na sukces — sprząta. Na błąd po swapie — ROLLBACK do graphs_old.
+#   6. Na sukces — sprząta. Na błąd po swapie — ROLLBACK do graphs_old.
 #
 # Zero-downtime ors-app (patrz docker-compose.yml + README.md "Zero-downtime deploy").
 # Build (~15–30 min) idzie obok produkcji, sam rollout to tyle ile trwa załadowanie
 # nowego grafu (do ORS_APP_TIMEOUT).
 #
-# Wymagania: docker, wget, venv pod script/env/ z osmium + lxml, plugin `docker-rollout`
-# zainstalowany jako `docker rollout` (patrz README.md).
+# Wymagania: docker, wget, venv pod script/env/ z osmium (pyosmium), plugin
+# `docker-rollout` zainstalowany jako `docker rollout` (patrz README.md).
 
 set -euo pipefail
 
@@ -41,11 +41,12 @@ GRAPHS_OLD="${ORS_DOCKER}/graphs_old"
 
 OSM_URL="https://download.geofabrik.de/europe/poland/mazowieckie-latest.osm.pbf"
 PBF_FILE="${STAGING_DIR}/mazowieckie-latest.osm.pbf"
-XML_RAW="${STAGING_DIR}/mazowieckie-latest.osm"
-XML_PROCESSED="${STAGING_DIR}/mazowieckie.osm"
+MAP_PROCESSED="${STAGING_DIR}/mazowieckie.osm.pbf"
 
-PROD_XML="${FILES_DIR}/mazowieckie.osm"
-PROD_XML_BACKUP="${FILES_DIR}/mazowieckie.osm.prev"
+# Produkcyjna mapa (source_file w prod-ors-config.yml). Dawniej XML (mazowieckie.osm);
+# od przejścia na transform_osm.py — PBF.
+PROD_MAP="${FILES_DIR}/mazowieckie.osm.pbf"
+PROD_MAP_BACKUP="${FILES_DIR}/mazowieckie.osm.pbf.prev"
 
 VENV_PYTHON="${SCRIPT_DIR}/env/bin/python3"
 LOCK_DIR="/tmp/traska-refresh-ors.lock"
@@ -53,10 +54,11 @@ LOCK_DIR="/tmp/traska-refresh-ors.lock"
 # Endpoint do healthchecka ORS (z poziomu hosta, dla ors-app)
 ORS_APP_HEALTH_URL="http://localhost:8080/ors/v2/health"
 
-# Rejestr interwencji routingowych (aplikacja web) — źródło syntetycznych way'ów dla
-# fix_private_roads.py i cel callbacku "baked" po udanym rollout. CRON_SECRET bierzemy
-# z env, a gdy brak — z web/.env. Wszystko nieblokujące: brak sekretu/API = build
-# z samym bootstrapem SYNTHETIC_WAYS (patrz load_synthetic_ways w fix_private_roads.py).
+# Rejestr interwencji routingowych (aplikacja web) — źródło danych transformacji
+# mapy (transform_osm.py) i cel callbacku "baked" po udanym rollout. CRON_SECRET
+# bierzemy z env, a gdy brak — z web/.env. Wszystko nieblokujące: brak sekretu/API
+# = snapshot ostatniego eksportu, a w ostateczności bootstrapy w skrypcie
+# (patrz load_graph_interventions w transform_osm.py).
 TRASKA_APP_URL="${TRASKA_APP_URL:-http://localhost:3000}"
 WEB_ENV_FILE="$(cd "${ORS_ROOT}/.." && pwd)/web/.env"
 if [ -z "${CRON_SECRET:-}" ] && [ -f "${WEB_ENV_FILE}" ]; then
@@ -129,11 +131,11 @@ rollback() {
         log "✓ Grafy przywrócone (failed wersja w graphs.failed)"
     fi
 
-    if [ -f "${PROD_XML_BACKUP}" ]; then
-        rm -f "${PROD_XML}.failed" 2>/dev/null || true
-        [ -f "${PROD_XML}" ] && mv "${PROD_XML}" "${PROD_XML}.failed"
-        mv "${PROD_XML_BACKUP}" "${PROD_XML}"
-        log "✓ XML przywrócony (failed wersja w mazowieckie.osm.failed)"
+    if [ -f "${PROD_MAP_BACKUP}" ]; then
+        rm -f "${PROD_MAP}.failed" 2>/dev/null || true
+        [ -f "${PROD_MAP}" ] && mv "${PROD_MAP}" "${PROD_MAP}.failed"
+        mv "${PROD_MAP_BACKUP}" "${PROD_MAP}"
+        log "✓ Mapa przywrócona (failed wersja w mazowieckie.osm.pbf.failed)"
     fi
 
     # `docker rollout` na niepowodzeniu healthchecka sam usuwa niezdrową nową
@@ -190,43 +192,29 @@ report_log INFO "Migration started"
 
 # ============================== 1. Download ==================================
 
-step "1/6 Pobieranie PBF z Geofabrik"
+step "1/5 Pobieranie PBF z Geofabrik"
 log "URL: ${OSM_URL}"
 wget --progress=dot:giga -O "${PBF_FILE}" "${OSM_URL}"
 log "✓ Pobrano $(du -h "${PBF_FILE}" | cut -f1) → ${PBF_FILE}"
 
-# ============================== 2. PBF → XML =================================
+# ============================== 2. Transformacja mapy ========================
 
-step "2/6 Konwersja PBF → XML"
-"${VENV_PYTHON}" - <<PY
-import sys
-sys.path.insert(0, "${SCRIPT_DIR}")
-from convert_osm_to_xml import convert_pbf_to_osm_xml
-convert_pbf_to_osm_xml("${PBF_FILE}", "${XML_RAW}")
-PY
-[ -f "${XML_RAW}" ] || { err "Konwersja nie wyprodukowała ${XML_RAW}"; exit 1; }
-log "✓ XML: $(du -h "${XML_RAW}" | cut -f1)"
+step "2/5 Transformacja mapy (transform_osm.py, PBF→PBF)"
+TRASKA_APP_URL="${TRASKA_APP_URL}" \
+CRON_SECRET="${CRON_SECRET:-}" \
+SYNTHETIC_WAYS_MANIFEST="${SYNTHETIC_WAYS_MANIFEST}" \
+GRAPH_INTERVENTIONS_SNAPSHOT="${GRAPH_INTERVENTIONS_SNAPSHOT}" \
+STRIP_ACCESS_TAGS="${STRIP_ACCESS_TAGS:-true}" \
+    "${VENV_PYTHON}" "${SCRIPT_DIR}/transform_osm.py" "${PBF_FILE}" "${MAP_PROCESSED}"
+[ -f "${MAP_PROCESSED}" ] || { err "Brak ${MAP_PROCESSED} po transform_osm"; exit 1; }
+log "✓ Przetworzono: $(du -h "${MAP_PROCESSED}" | cut -f1)"
 
 # Surowy PBF nam już niepotrzebny — wolimy odzyskać miejsce
 rm -f "${PBF_FILE}"
 
-# ============================== 3. Fix private roads =========================
+# ============================== 3. Build grafów ==============================
 
-step "3/6 Poprawki prywatnych dróg i ręcznych korekt"
-# czysty staging — usuwamy ewentualny artefakt poprzedniego biegu
-rm -f "${XML_PROCESSED}"
-TRASKA_APP_URL="${TRASKA_APP_URL}" \
-CRON_SECRET="${CRON_SECRET:-}" \
-SYNTHETIC_WAYS_MANIFEST="${SYNTHETIC_WAYS_MANIFEST}" \
-    "${VENV_PYTHON}" "${SCRIPT_DIR}/fix_private_roads.py" "${XML_RAW}" "${XML_PROCESSED}"
-[ -f "${XML_PROCESSED}" ] || { err "Brak ${XML_PROCESSED} po fix_private_roads"; exit 1; }
-log "✓ Przetworzono: $(du -h "${XML_PROCESSED}" | cut -f1)"
-
-rm -f "${XML_RAW}"
-
-# ============================== 4. Build grafów ==============================
-
-step "4/6 Build grafów (ors-builder)"
+step "3/5 Build grafów (ors-builder)"
 mkdir -p "${GRAPHS_STAGING}"
 
 # Builder dzieli obraz z ors-app (lokalny fork). Jeśli image nie istnieje,
@@ -283,7 +271,7 @@ log "✓ graphs_staging zapełniony"
 
 # ============================== 5. Atomic swap ===============================
 
-step "5/6 Atomic swap"
+step "4/5 Atomic swap"
 
 # Usuń pozostałości po poprzednim udanym biegu (gdyby cleanup się nie wykonał)
 rm -rf "${GRAPHS_OLD}"
@@ -297,15 +285,15 @@ fi
 mv "${GRAPHS_STAGING}" "${GRAPHS_DIR}"
 log "✓ graphs → graphs_old, graphs_staging → graphs"
 
-if [ -f "${PROD_XML}" ]; then
-    mv "${PROD_XML}" "${PROD_XML_BACKUP}"
+if [ -f "${PROD_MAP}" ]; then
+    mv "${PROD_MAP}" "${PROD_MAP_BACKUP}"
 fi
-mv "${XML_PROCESSED}" "${PROD_XML}"
-log "✓ mazowieckie.osm podmieniony (backup w .prev)"
+mv "${MAP_PROCESSED}" "${PROD_MAP}"
+log "✓ mazowieckie.osm.pbf podmieniony (backup w .prev)"
 
 # ============================== 6. Rollout ors-app (zero-downtime) ===========
 
-step "6/6 Rollout ors-app (zero-downtime) i weryfikacja"
+step "5/5 Rollout ors-app (zero-downtime) i weryfikacja"
 
 # `docker rollout` stawia nowy kontener ors-app obok starego — dzieli ten sam
 # bind mount, więc od razu widzi grafy podmienione w kroku 5. Czeka aż przejdzie
@@ -352,7 +340,7 @@ fi
 
 step "Cleanup"
 rm -rf "${GRAPHS_OLD}"
-rm -f  "${PROD_XML_BACKUP}"
+rm -f  "${PROD_MAP_BACKUP}"
 rm -rf "${STAGING_DIR}"
 log "✓ Usunięto staging i backupy"
 

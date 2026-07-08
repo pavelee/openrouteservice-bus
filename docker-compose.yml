@@ -98,7 +98,7 @@ services:
       ORS_CONFIG_LOCATION: /home/ors/config/prod-ors-config.yml
       # Nadpisania ścieżek — ten sam config co ors-app, ale piszemy w staging
       ors.engine.profile_default.graph_path: /home/ors/graphs_staging
-      ors.engine.profile_default.build.source_file: /home/ors/files/staging/mazowieckie.osm
+      ors.engine.profile_default.build.source_file: /home/ors/files/staging/mazowieckie.osm.pbf
       XMS: 1g
       XMX: 4g
       ADDITIONAL_JAVA_OPTS: ""
