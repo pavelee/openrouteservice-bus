@@ -62,7 +62,15 @@ WEB_ENV_FILE="$(cd "${ORS_ROOT}/.." && pwd)/web/.env"
 if [ -z "${CRON_SECRET:-}" ] && [ -f "${WEB_ENV_FILE}" ]; then
     CRON_SECRET="$(grep -E '^CRON_SECRET=' "${WEB_ENV_FILE}" | head -1 | cut -d= -f2- | tr -d '"' || true)"
 fi
+# Klucz do centralnego app_log (POST /api/v1/logs) — jak w cron/import-script.sh.
+if [ -z "${TRASKA_API_KEY:-}" ] && [ -f "${WEB_ENV_FILE}" ]; then
+    TRASKA_API_KEY="$(grep -E '^TRASKA_API_KEY=' "${WEB_ENV_FILE}" | head -1 | cut -d= -f2- | tr -d '"' || true)"
+fi
 SYNTHETIC_WAYS_MANIFEST="${STAGING_DIR}/synthetic-ways-manifest.json"
+# Snapshot ostatniego UDANEGO eksportu interwencji grafowych — fallback dla
+# skryptu transformacji mapy, gdy rejestr (API) jest niedostępny. Poza staging,
+# bo staging jest czyszczony na starcie każdego biegu.
+GRAPH_INTERVENTIONS_SNAPSHOT="${FILES_DIR}/graph-interventions-snapshot.json"
 
 # Timeouty
 BUILDER_TIMEOUT=3600    # 60 min na build grafów
@@ -78,6 +86,28 @@ SWAPPED=0
 log()  { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 err()  { printf '[%s] [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
 step() { printf '\n[%s] ===== %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+
+# report_log <LEVEL> <message> — centralny app_log aplikacji (panel zdrowia).
+# NIGDY nie przerywa refreshu (wzorzec cron/import-script.sh). Komunikaty
+# "Migration started/completed/failed" rozpoznaje panel zdrowia — nie zmieniać.
+LOG_SOURCE="script.refresh-ors"
+REFRESH_START_TS=$(date +%s)
+report_log() {
+    local level="$1" message="$2"
+    [ -n "${TRASKA_API_KEY:-}" ] || return 0
+    local duration_ms=$(( ($(date +%s) - REFRESH_START_TS) * 1000 ))
+    local body_file
+    body_file="$(mktemp)" || return 0
+    printf '{"level":"%s","source":"%s","message":"%s","payload":{"durationMs":%s}}' \
+        "$level" "$LOG_SOURCE" "$message" "$duration_ms" > "$body_file"
+    wget -qO- --timeout=15 \
+        --header="Content-Type: application/json" \
+        --header="x-api-key: ${TRASKA_API_KEY}" \
+        --post-file="$body_file" \
+        "${TRASKA_APP_URL}/api/v1/logs" >/dev/null 2>&1 \
+      || log "WARN: nie udało się zaraportować do app_log (${level}: ${message})"
+    rm -f "$body_file"
+}
 
 # ============================== Lock =========================================
 
@@ -132,6 +162,11 @@ cleanup() {
         rollback
     fi
 
+    # Konwencja panelu zdrowia: Migration started/completed/failed.
+    if [ ${rc} -ne 0 ]; then
+        report_log ERROR "Migration failed"
+    fi
+
     rmdir "${LOCK_DIR}" 2>/dev/null || true
     exit ${rc}
 }
@@ -150,6 +185,8 @@ command -v wget   >/dev/null || { err "wget nie znaleziony w PATH"; exit 1; }
 log "Czyszczę staging z poprzednich biegów..."
 rm -rf "${STAGING_DIR}" "${GRAPHS_STAGING}"
 mkdir -p "${STAGING_DIR}"
+
+report_log INFO "Migration started"
 
 # ============================== 1. Download ==================================
 
@@ -322,4 +359,5 @@ log "✓ Usunięto staging i backupy"
 # Świat jest spójny — wyłączamy rollback z trapa
 SWAPPED=0
 
+report_log INFO "Migration completed"
 step "SUKCES — refresh ORS zakończony"
