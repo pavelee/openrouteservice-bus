@@ -8,17 +8,15 @@
 #      (blokady, korekty tagów, pominięcia relacji, synthetic ways, bus:on_route)
 #   3. Uruchamia ors-builder z profilu compose i czeka aż zbuduje grafy do graphs_staging/
 #   4. Zatrzymuje buildera, robi atomic swap (graphs → graphs_old, graphs_staging → graphs)
-#   5. `docker rollout ors-app` — stawia nowy kontener obok starego (już z podmienionym
-#      grafem, bo dzieli ten sam bind mount), czeka aż przejdzie healthcheck, dopiero
-#      wtedy gasi stary. Stary kontener cały czas serwuje ruch na starym grafie z pamięci.
+#   5. Recreate ors-app z ROOT compose na nowych grafach i czeka na ready.
+#      UWAGA: okno niedostępności = czas ładowania grafu (~1-3 min). Zero-downtime
+#      (traefik + docker rollout) żyje na gałęzi `zero_down_time` i wróci po jej
+#      merge — obecny main ma container_name + sztywny port, rollout nie zadziała.
 #   6. Na sukces — sprząta. Na błąd po swapie — ROLLBACK do graphs_old.
 #
-# Zero-downtime ors-app (patrz docker-compose.yml + README.md "Zero-downtime deploy").
-# Build (~15–30 min) idzie obok produkcji, sam rollout to tyle ile trwa załadowanie
-# nowego grafu (do ORS_APP_TIMEOUT).
+# Build (~15–30 min) idzie obok produkcji (stary ors-app serwuje przez cały build).
 #
-# Wymagania: docker, wget, venv pod script/env/ z osmium (pyosmium), plugin
-# `docker-rollout` zainstalowany jako `docker rollout` (patrz README.md).
+# Wymagania: docker, wget, venv pod script/env/ z osmium (pyosmium).
 
 set -euo pipefail
 
@@ -28,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${ORS_ROOT}/docker-compose.yml"
 
-# Repo root compose (definiuje faktyczny produkcyjny ors-app + traefik).
+# Repo root compose (definiuje faktyczny produkcyjny ors-app).
 # COMPOSE_FILE (submodule) służy tylko do ors-builder (profil "builder").
 ROOT_COMPOSE_FILE="$(cd "${ORS_ROOT}/.." && pwd)/docker-compose.yml"
 
@@ -55,7 +53,7 @@ LOCK_DIR="/tmp/traska-refresh-ors.lock"
 ORS_APP_HEALTH_URL="http://localhost:8080/ors/v2/health"
 
 # Rejestr interwencji routingowych (aplikacja web) — źródło danych transformacji
-# mapy (transform_osm.py) i cel callbacku "baked" po udanym rollout. CRON_SECRET
+# mapy (transform_osm.py) i cel callbacku "baked" po udanym restarcie. CRON_SECRET
 # bierzemy z env, a gdy brak — z web/.env. Wszystko nieblokujące: brak sekretu/API
 # = snapshot ostatniego eksportu, a w ostateczności bootstrapy w skrypcie
 # (patrz load_graph_interventions w transform_osm.py).
@@ -77,7 +75,7 @@ GRAPH_INTERVENTIONS_SNAPSHOT="${FILES_DIR}/graph-interventions-snapshot.json"
 # Timeouty
 BUILDER_TIMEOUT=3600    # 60 min na build grafów
 BUILDER_POLL=30
-ORS_APP_TIMEOUT=300     # 5 min na `docker rollout` (healthcheck nowej repliki ors-app)
+ORS_APP_TIMEOUT=300     # 5 min na start ors-app (załadowanie nowego grafu do ready)
 ORS_APP_POLL=5
 
 # Stan dla rollbacka — czy zdążyliśmy podmienić katalogi
@@ -138,14 +136,18 @@ rollback() {
         log "✓ Mapa przywrócona (failed wersja w mazowieckie.osm.pbf.failed)"
     fi
 
-    # `docker rollout` na niepowodzeniu healthchecka sam usuwa niezdrową nową
-    # replikę i zostawia starą (wciąż serwującą ze starego grafu w pamięci)
-    # działającą. Dla pewności wymuszamy dokładnie 1 replikę na (teraz
-    # przywróconych) plikach, niezależnie w jakim stanie rollout się urwał —
-    # scale-down usuwa replikę o wyższym indeksie, czyli tę nowszą/niezdrową.
-    log "Wymuszam dokładnie 1 zdrową replikę ors-app po rollbacku..."
-    docker compose -f "${ROOT_COMPOSE_FILE}" up -d --scale ors-app=1 ors-app >/dev/null 2>&1 \
-        || err "Nie udało się przywrócić ors-app — wymagana ręczna interwencja"
+    # Po przywróceniu plików upewnij się, że ors-app działa. Jeśli restart w
+    # kroku 5 zdążył zdjąć stary kontener, stawiamy go od nowa na PRZYWRÓCONYCH
+    # grafach (recreate z ROOT compose, jak w kroku 5). Jeśli stary kontener
+    # nadal działa (błąd przed restartem) — zostaje nietknięty, serwuje dalej.
+    if ! docker ps --format '{{.Names}}' | grep -q '^ors-app$'; then
+        log "ors-app nie działa — stawiam na przywróconych grafach..."
+        docker rm -f ors-app >/dev/null 2>&1 || true
+        docker compose -f "${ROOT_COMPOSE_FILE}" up -d ors-app >/dev/null 2>&1 \
+            || err "Nie udało się przywrócić ors-app — wymagana ręczna interwencja"
+    else
+        log "ors-app nadal działa (serwuje stary graf z pamięci) — bez zmian"
+    fi
 
     err "ROLLBACK ZAKOŃCZONY. Sprawdź ors-app i pliki *.failed."
 }
@@ -291,23 +293,36 @@ fi
 mv "${MAP_PROCESSED}" "${PROD_MAP}"
 log "✓ mazowieckie.osm.pbf podmieniony (backup w .prev)"
 
-# ============================== 6. Rollout ors-app (zero-downtime) ===========
+# ============================== 5. Restart ors-app ===========================
 
-step "5/5 Rollout ors-app (zero-downtime) i weryfikacja"
+step "5/5 Restart ors-app na nowych grafach"
 
-# `docker rollout` stawia nowy kontener ors-app obok starego — dzieli ten sam
-# bind mount, więc od razu widzi grafy podmienione w kroku 5. Czeka aż przejdzie
-# healthcheck z docker-compose.yml (sprawdza "status":"ready", nie tylko HTTP 200),
-# dopiero wtedy gasi stary kontener. Stary serwuje ruch bez przerwy przez cały czas.
-log "docker rollout ors-app (timeout ${ORS_APP_TIMEOUT}s)..."
-docker rollout --timeout "${ORS_APP_TIMEOUT}" -f "${ROOT_COMPOSE_FILE}" ors-app
+# UWAGA: to NIE jest zero-downtime. `docker rollout` wymaga usługi bez
+# container_name i bez sztywno publikowanego portu (druga replika musi móc
+# wstać obok) — taką topologię (traefik przed usługami) ma gałąź
+# `zero_down_time` (commit "Zero downtime konfiguracja"), która nigdy nie
+# weszła na main. Na mainie ors-app ma container_name=ors-app i port
+# 8080:8082, więc rollout kończył się konfliktem nazwy — tym bardziej, że
+# produkcyjny kontener bywał startowany z compose SUBMODUŁU (inny projekt
+# compose), przez co rollout w ogóle nie widział "swojej" usługi.
+#
+# Robimy więc deterministyczny recreate: zdejmij DOWOLNY kontener o nazwie
+# ors-app (niezależnie od projektu compose, który go stworzył), postaw z ROOT
+# compose i czekaj na ready. Okno niedostępności = czas ładowania grafu
+# (zwykle 1-3 min). Prawdziwy zero-downtime wróci po merge gałęzi zero_down_time.
+if docker ps -a --format '{{.Names}}' | grep -q '^ors-app$'; then
+    log "Zdejmuję istniejący kontener ors-app (niezależnie od projektu compose)..."
+    docker rm -f ors-app >/dev/null
+fi
+log "Startuję ors-app z ROOT compose..."
+docker compose -f "${ROOT_COMPOSE_FILE}" up -d ors-app
 
-log "Weryfikacja end-to-end przez ${ORS_APP_HEALTH_URL} (przez traefik)..."
+log "Czekam na ready przez ${ORS_APP_HEALTH_URL} (timeout ${ORS_APP_TIMEOUT}s — ładowanie grafu)..."
 start_ts=$(date +%s)
 while true; do
     elapsed=$(( $(date +%s) - start_ts ))
-    if [ ${elapsed} -gt 30 ]; then
-        err "ors-app nie odpowiada 'ready' przez publiczny endpoint mimo udanego rollout"
+    if [ ${elapsed} -gt ${ORS_APP_TIMEOUT} ]; then
+        err "ors-app nie odpowiada 'ready' po ${elapsed}s od restartu"
         exit 1
     fi
 
@@ -342,7 +357,10 @@ step "Cleanup"
 rm -rf "${GRAPHS_OLD}"
 rm -f  "${PROD_MAP_BACKUP}"
 rm -rf "${STAGING_DIR}"
-log "✓ Usunięto staging i backupy"
+# Artefakty ewentualnych poprzednich NIEUDANYCH biegów — po sukcesie zbędne.
+rm -rf "${GRAPHS_DIR}.failed"
+rm -f  "${PROD_MAP}.failed"
+log "✓ Usunięto staging, backupy i artefakty .failed"
 
 # Świat jest spójny — wyłączamy rollback z trapa
 SWAPPED=0

@@ -5,7 +5,7 @@
 Jeden skrypt który robi wszystko: pobiera świeży PBF, konwertuje, nakłada
 transformacje mapy (interwencje z rejestru), **buduje nowe grafy ORS w
 izolowanym kontenerze** (`ors-builder` z profilu compose), robi atomic swap
-katalogów i przełącza `ors-app` bez przerwy w serwowaniu (docker rollout).
+katalogów i restartuje `ors-app` na nowych grafach (okno ~1-3 min ładowania grafu; zero-downtime wróci po merge gałęzi zero_down_time).
 
 ```bash
 # Uruchomienie (z dowolnego cwd — skrypt sam ustala ścieżki)
