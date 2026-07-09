@@ -80,6 +80,9 @@ ORS_APP_POLL=5
 
 # Stan dla rollbacka — czy zdążyliśmy podmienić katalogi
 SWAPPED=0
+# Czy krok 5 zdążył zdjąć stary kontener ors-app (wtedy rollback musi go odtworzyć,
+# nawet jeśli jakiś kontener o tej nazwie "działa" — może być w crash-loopie).
+REPLACED=0
 
 # ============================== Logowanie ====================================
 
@@ -136,17 +139,18 @@ rollback() {
         log "✓ Mapa przywrócona (failed wersja w mazowieckie.osm.pbf.failed)"
     fi
 
-    # Po przywróceniu plików upewnij się, że ors-app działa. Jeśli restart w
-    # kroku 5 zdążył zdjąć stary kontener, stawiamy go od nowa na PRZYWRÓCONYCH
-    # grafach (recreate z ROOT compose, jak w kroku 5). Jeśli stary kontener
-    # nadal działa (błąd przed restartem) — zostaje nietknięty, serwuje dalej.
-    if ! docker ps --format '{{.Names}}' | grep -q '^ors-app$'; then
-        log "ors-app nie działa — stawiam na przywróconych grafach..."
+    # Po przywróceniu plików upewnij się, że ors-app działa NA PRZYWRÓCONYCH
+    # grafach. Jeśli krok 5 zdążył podmienić kontener (REPLACED=1), ZAWSZE
+    # odtwarzamy — kontener po nieudanym starcie bywa "running" w crash-loopie
+    # i sam test `docker ps` kłamie (awaria 2026-07-09: kontener na złym obrazie
+    # restartował się w kółko, a rollback zostawiał go "bez zmian").
+    if [ "${REPLACED}" -eq 1 ] || ! docker ps --format '{{.Names}}' | grep -q '^ors-app$'; then
+        log "Odtwarzam ors-app na przywróconych grafach..."
         docker rm -f ors-app >/dev/null 2>&1 || true
         docker compose -f "${ROOT_COMPOSE_FILE}" up -d ors-app >/dev/null 2>&1 \
             || err "Nie udało się przywrócić ors-app — wymagana ręczna interwencja"
     else
-        log "ors-app nadal działa (serwuje stary graf z pamięci) — bez zmian"
+        log "ors-app nadal działa (stary kontener, błąd przed restartem) — bez zmian"
     fi
 
     err "ROLLBACK ZAKOŃCZONY. Sprawdź ors-app i pliki *.failed."
@@ -310,10 +314,23 @@ step "5/5 Restart ors-app na nowych grafach"
 # ors-app (niezależnie od projektu compose, który go stworzył), postaw z ROOT
 # compose i czekaj na ready. Okno niedostępności = czas ładowania grafu
 # (zwykle 1-3 min). Prawdziwy zero-downtime wróci po merge gałęzi zero_down_time.
+# Bezpiecznik obrazu: ors-app MUSI chodzić na obrazie lokalnego forka —
+# dokładnie tym, którym builder zbudował grafy. Awaria 2026-07-09: root compose
+# wskazywał tag upstreamowy, docker ściągnął czysty obraz z Docker Huba (bez
+# profilu driving-bus) i ors-app wpadł w crash-loop.
+if ! docker compose -f "${ROOT_COMPOSE_FILE}" config ors-app 2>/dev/null \
+       | grep -q 'image: local/openrouteservice:v9.4.0'; then
+    err "ROOT compose nie wskazuje obrazu local/openrouteservice:v9.4.0 dla ors-app"
+    err "(ors-app zbudowałby się z innego obrazu niż grafy — przerwano PRZED restartem)"
+    exit 1
+fi
+
 if docker ps -a --format '{{.Names}}' | grep -q '^ors-app$'; then
     log "Zdejmuję istniejący kontener ors-app (niezależnie od projektu compose)..."
     docker rm -f ors-app >/dev/null
 fi
+# Od tego momentu stary kontener nie istnieje — rollback MUSI odtworzyć ors-app.
+REPLACED=1
 log "Startuję ors-app z ROOT compose..."
 docker compose -f "${ROOT_COMPOSE_FILE}" up -d ors-app
 
@@ -323,6 +340,16 @@ while true; do
     elapsed=$(( $(date +%s) - start_ts ))
     if [ ${elapsed} -gt ${ORS_APP_TIMEOUT} ]; then
         err "ors-app nie odpowiada 'ready' po ${elapsed}s od restartu"
+        docker logs --tail=40 ors-app 2>&1 | tail -20 >&2 || true
+        exit 1
+    fi
+
+    # Fail-fast na crash-loop: restart-count rośnie = kontener umiera przy
+    # starcie (np. zły obraz/config) — nie ma sensu czekać do timeoutu.
+    restarts=$(docker inspect -f '{{.RestartCount}}' ors-app 2>/dev/null || echo 0)
+    if [ "${restarts:-0}" -ge 2 ]; then
+        err "ors-app w crash-loopie (RestartCount=${restarts}) — logi:"
+        docker logs --tail=40 ors-app 2>&1 | tail -20 >&2 || true
         exit 1
     fi
 

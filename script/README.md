@@ -50,10 +50,10 @@ wtedy BusFlagEncoder). Procedura flipa:
    (np. `bus=yes`) w rejestrze zamiast globalnej dziury,
 4. po stabilizacji ustawić `STRIP_ACCESS_TAGS=false` na stałe w wywołaniu.
 
-Test równoważności ze starym pipeline (fixture syntetyczna):
-`./env/bin/python3 test_transform_equivalence.py`. Stare skrypty
-(`fix_private_roads.py`, `convert_osm_to_xml.py`) są DEPRECATED — do usunięcia
-po pierwszym zwalidowanym rebuildzie nowym pipeline.
+Stare skrypty (`fix_private_roads.py`, `convert_osm_to_xml.py`) i test
+równoważności usunięte 2026-07-09 po zwalidowanym rebuildzie nowym pipeline
+(regresja 116 tras: delty wyłącznie 0/±1 m vs stary graf) — do odzyskania
+z historii gita.
 
 ## Walidacja tras po zmianach
 

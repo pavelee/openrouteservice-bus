@@ -1,5 +1,5 @@
-graph_build_date: 2026-07-05T15:36:15+0000
-osm_date: null
+graph_build_date: 2026-07-09T15:49:06+0000
+osm_date: 1970-01-01T00:00:00+0000
 graph_version: 2
 profile_properties:
   encoder_name: driving-bus
