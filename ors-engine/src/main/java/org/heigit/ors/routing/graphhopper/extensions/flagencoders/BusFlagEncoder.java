@@ -248,6 +248,25 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         return maxSpeed;
     }
 
+    /**
+     * Neutralizacja odziedziczonej kary "gęstych węzłów" na residential (VehicleFlagEncoder:
+     * średni odstęp węzłów way'a < 100 m → speed × 0.5). Ta heurystyka jest samochodowa
+     * (modeluje wąskie uliczki z ciągłymi skrzyżowaniami) i liczona PER WAY, więc zwykły
+     * PODZIAŁ way'a w OSM — bez żadnej zmiany geometrii ani tagów — potrafi zmienić prędkość
+     * odcinka w grafie. Incydent 2026-07-09 (linia 198, Głowackiego/PKP Wesoła): mapowicz
+     * podzielił way 313 m / 4 węzły (104 m/węzeł, bez kary) na kawałki 76 m i 118 m (oba
+     * < 100 m/węzeł, oba ukarane ×0.5), przez co trasa uciekła na objazd zamknięty budową.
+     * Autobus miejski z definicji jeździ ulicami residential z przystankami — preferencje
+     * tych ulic kontroluje custom_model po stronie klienta (orsBusCustomModel.ts: RESIDENTIAL
+     * 0.714, "osiedlowe skróty" ×0.5 przy max_speed>90 i bus$on_route==false), który jest
+     * deterministyczny względem podziałów way'ów. Pełny zapis incydentu: baza wiedzy,
+     * notatki/traska/198-glowackiego-way-split-residential-penalty.md.
+     */
+    @Override
+    double addResedentialPenalty(double baseSpeed, ReaderWay way) {
+        return baseSpeed;
+    }
+
     @Override
     protected String getHighway(ReaderWay way) {
         return way.getTag(KEY_HIGHWAY);

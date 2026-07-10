@@ -4,6 +4,7 @@ import com.graphhopper.json.Statement;
 import com.graphhopper.reader.ReaderNode;
 import com.graphhopper.reader.ReaderWay;
 import com.graphhopper.routing.ev.BooleanEncodedValue;
+import com.graphhopper.routing.ev.DecimalEncodedValue;
 import com.graphhopper.routing.util.EncodingManager;
 import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.routing.weighting.custom.CustomProfile;
@@ -17,6 +18,7 @@ import org.heigit.ors.routing.graphhopper.extensions.ORSWeightingFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -216,5 +218,43 @@ class BusFlagEncoderTest {
         assertTrue(em.acceptWay(way, acceptWay));
         IntsRef edgeFlags = em.handleWayTags(way, acceptWay, em.createRelationFlags());
         assertFalse(busPreferred.getBool(false, edgeFlags));
+    }
+
+    @Test
+    void testNodeDensityResidentialPenaltyNeutralized() {
+        // Regres 2026-07-09 (linia 198, Głowackiego/PKP Wesoła): podział way'a w OSM —
+        // bez zmiany geometrii ani tagów — aktywował odziedziczoną karę ×0.5 dla residential
+        // ze średnim odstępem węzłów < 100 m (liczonym per way). Dla autobusu kara jest
+        // zneutralizowana: prędkość nie może zależeć od tego, jak mapowicz potnie ulicę.
+        way.setTag("highway", "residential");
+        way.setTag("estimated_distance", 76.0); // 4 węzły na 76 m → ~25 m/węzeł (< 100)
+        for (long i = 1; i <= 4; i++) way.getNodes().add(i);
+        assertEquals(25.0, encoder.addResedentialPenalty(25.0, way), 0.001);
+    }
+
+    @Test
+    void testResidentialSpeedIndependentOfWaySplit() {
+        // Pełna ścieżka handleWayTags: ta sama ulica jako jeden długi way (rzadkie węzły
+        // per way) i jako krótki kawałek po podziale (gęste węzły per way) musi dostać
+        // IDENTYCZNĄ prędkość w grafie.
+        DecimalEncodedValue avgSpeed = encoder.getAverageSpeedEnc();
+
+        ReaderWay longWay = new ReaderWay(1);
+        longWay.setTag("highway", "residential");
+        longWay.setTag("estimated_distance", 313.0);
+        for (long i = 1; i <= 4; i++) longWay.getNodes().add(i); // ~104 m/węzeł
+        EncodingManager.AcceptWay acceptLong = new EncodingManager.AcceptWay();
+        assertTrue(em.acceptWay(longWay, acceptLong));
+        IntsRef longFlags = em.handleWayTags(longWay, acceptLong, em.createRelationFlags());
+
+        ReaderWay splitWay = new ReaderWay(2);
+        splitWay.setTag("highway", "residential");
+        splitWay.setTag("estimated_distance", 76.0);
+        for (long i = 1; i <= 4; i++) splitWay.getNodes().add(i); // ~25 m/węzeł
+        EncodingManager.AcceptWay acceptSplit = new EncodingManager.AcceptWay();
+        assertTrue(em.acceptWay(splitWay, acceptSplit));
+        IntsRef splitFlags = em.handleWayTags(splitWay, acceptSplit, em.createRelationFlags());
+
+        assertEquals(avgSpeed.getDecimal(false, longFlags), avgSpeed.getDecimal(false, splitFlags), 0.001);
     }
 }
