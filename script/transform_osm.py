@@ -150,23 +150,31 @@ def load_graph_interventions():
     payload = None
     source = 'bootstrap'
     if secret:
-        try:
-            req = urllib.request.Request(
-                f'{app_url}/api/routing-interventions/graph-export',
-                headers={'Authorization': f'Bearer {secret}'},
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                payload = json.load(resp)
-            source = 'rejestr'
-            if snapshot_path:
-                try:
-                    with open(snapshot_path, 'w') as f:
-                        json.dump(payload, f)
-                    print(f'✓ Snapshot eksportu zapisany: {snapshot_path}')
-                except Exception as e:
-                    print(f'WARN: nie udało się zapisać snapshotu: {e}')
-        except Exception as e:
-            print(f'WARN: rejestr interwencji niedostępny ({e})')
+        # Retry: pojedynczy strzał trafiał w chwilowe restarty aplikacji web
+        # (2026-07-12: refresh w oknie podmiany dev servera pobrał stary snapshot
+        # i wypiekł nieaktualną definicję synthetic way'a — patrz notatka
+        # 503-bracka-tymczasowy-lewoskret-synthetic-way w bazie wiedzy).
+        for attempt in range(1, 4):
+            try:
+                req = urllib.request.Request(
+                    f'{app_url}/api/routing-interventions/graph-export',
+                    headers={'Authorization': f'Bearer {secret}'},
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    payload = json.load(resp)
+                source = 'rejestr'
+                if snapshot_path:
+                    try:
+                        with open(snapshot_path, 'w') as f:
+                            json.dump(payload, f)
+                        print(f'✓ Snapshot eksportu zapisany: {snapshot_path}')
+                    except Exception as e:
+                        print(f'WARN: nie udało się zapisać snapshotu: {e}')
+                break
+            except Exception as e:
+                print(f'WARN: rejestr interwencji niedostępny (próba {attempt}/3: {e})')
+                if attempt < 3:
+                    time.sleep(10)
     else:
         print('WARN: brak CRON_SECRET w env — rejestr interwencji pominięty')
 
@@ -196,8 +204,11 @@ def load_graph_interventions():
     manifest_path = os.environ.get('SYNTHETIC_WAYS_MANIFEST')
     if manifest_path:
         try:
+            # 'source' konsumuje refresh-ors.sh: callback baked wolno wysłać
+            # TYLKO gdy definicje przyszły z żywego rejestru. Wypiek ze snapshotu
+            # /bootstrapu może nieść nieaktualne definicje — BAKED by wtedy kłamał.
             with open(manifest_path, 'w') as f:
-                json.dump({'ids': data['intervention_ids']}, f)
+                json.dump({'ids': data['intervention_ids'], 'source': source}, f)
             print(f'✓ Manifest baked zapisany: {manifest_path}')
         except Exception as e:
             print(f'WARN: nie udało się zapisać manifestu baked: {e}')

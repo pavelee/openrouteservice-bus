@@ -366,7 +366,19 @@ done
 # Graf z syntetycznymi way'ami serwuje ruch — dopiero TERAZ wolno oznaczyć je jako
 # BAKED w rejestrze interwencji (uzbraja bramki czasowe w routingu aplikacji).
 # Nieblokujące: błąd = way'e zostają PENDING i zostaną oznaczone przy kolejnym refreshu.
-if [ -f "${SYNTHETIC_WAYS_MANIFEST}" ] && [ -n "${CRON_SECRET:-}" ]; then
+#
+# BEZPIECZNIK (2026-07-12): baked wolno wysłać TYLKO gdy transform pobrał definicje
+# z ŻYWEGO rejestru ("source":"rejestr" w manifeście). Wypiek ze snapshotu/bootstrapu
+# może nieść nieaktualne definicje — oznaczenie ich BAKED kłamało (case: stara wersja
+# way'a 9990000002 wypieczona ze snapshotu po chwilowym restarcie aplikacji web,
+# a rejestr twierdził, że w grafie jest nowa).
+if [ -f "${SYNTHETIC_WAYS_MANIFEST}" ] \
+       && ! grep -q '"source": *"rejestr"' "${SYNTHETIC_WAYS_MANIFEST}"; then
+    err "Transform NIE pobrał interwencji z żywego rejestru (snapshot/bootstrap)."
+    err "Graf może zawierać nieaktualne definicje — pomijam callback baked."
+    err "Sprawdź aplikację web (:3000) i powtórz refresh, żeby wypiec świeży rejestr."
+    report_log WARN "Migration completed with stale interventions (snapshot/bootstrap)"
+elif [ -f "${SYNTHETIC_WAYS_MANIFEST}" ] && [ -n "${CRON_SECRET:-}" ]; then
     step "Callback baked do rejestru interwencji"
     if wget -qO- --header="Authorization: Bearer ${CRON_SECRET}" \
             --header="Content-Type: application/json" \
