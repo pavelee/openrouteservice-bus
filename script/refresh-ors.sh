@@ -17,6 +17,10 @@
 # Build (~15–30 min) idzie obok produkcji (stary ors-app serwuje przez cały build).
 #
 # Wymagania: docker, wget, venv pod script/env/ z osmium (pyosmium).
+#
+# REBUILD_ORS_IMAGE=1 — wymuś przebudowę obrazu forka przed buildem grafu.
+# Ustaw ZAWSZE po zmianie w kodzie Javy (ors-engine), inaczej graf policzy się
+# starym jarem i zmiana nie wejdzie, mimo że skrypt zakończy się sukcesem.
 
 set -euo pipefail
 
@@ -226,7 +230,16 @@ mkdir -p "${GRAPHS_STAGING}"
 # Builder dzieli obraz z ors-app (lokalny fork). Jeśli image nie istnieje,
 # zbudujmy go zawczasu — inaczej `up -d` zrobi to "po cichu" i timeout
 # pollingu zdrowia może źle zinterpretować długi czas budowania obrazu.
-if ! docker image inspect local/openrouteservice:v9.4.0 >/dev/null 2>&1; then
+#
+# REBUILD_ORS_IMAGE=1 wymusza przebudowę obrazu, nawet gdy już istnieje. POTRZEBNE
+# ZAWSZE, gdy zmieniło się cokolwiek w kodzie Javy forka (BusFlagEncoder itd.) —
+# bez tego skrypt przeliczy graf STARYM jarem i zmiana w enkoderze po prostu nie
+# wejdzie, a build wygląda na udany. Domyślnie wyłączone, żeby nocny refresh nie
+# płacił za kompilację Mavena przy każdym przebiegu.
+if [ "${REBUILD_ORS_IMAGE:-0}" = "1" ]; then
+    log "REBUILD_ORS_IMAGE=1 — wymuszam przebudowę obrazu local/openrouteservice:v9.4.0"
+    docker compose -f "${COMPOSE_FILE}" --profile builder build ors-builder
+elif ! docker image inspect local/openrouteservice:v9.4.0 >/dev/null 2>&1; then
     log "Obraz local/openrouteservice:v9.4.0 nie istnieje — buduję..."
     docker compose -f "${COMPOSE_FILE}" --profile builder build ors-builder
 fi

@@ -77,6 +77,60 @@ class BusFlagEncoderTest {
     }
 
     @Test
+    void testDrivewaySkipped() {
+        way.setTag("highway", "service");
+        way.setTag("service", "driveway");
+        assertTrue(encoder.getAccess(way).canSkip());
+    }
+
+    @Test
+    void testDrivewayOnBusRouteAccessible() {
+        // Linia 735 / kraniec Zegrze Płd. 03: wjazd na parking z przystankiem to service=driveway
+        // bez żadnych tagów dostępu, ale way jest członkiem relacji OSM route=bus (bus:on_route=yes
+        // wstrzykiwany build-time). Bez tego wyjątku przystanek był nieosiągalny w grafie.
+        way.setTag("highway", "service");
+        way.setTag("service", "driveway");
+        way.setTag("bus:on_route", "yes");
+        assertTrue(encoder.getAccess(way).isWay());
+    }
+
+    @Test
+    void testParkingAisleOnBusRouteAccessible() {
+        // Ten sam przypadek co wyżej, wariant parking_aisle (pętla Palmiry 6401/71).
+        way.setTag("highway", "service");
+        way.setTag("service", "parking_aisle");
+        way.setTag("bus:on_route", "yes");
+        assertTrue(encoder.getAccess(way).isWay());
+    }
+
+    @Test
+    void testDrivewayOnBusRouteStillNotBusPreferred() {
+        // Kluczowy warunek bezpieczeństwa wyjątku bus:on_route: droga wchodzi do grafu, ale NIE
+        // dostaje bus$preferred, więc reguła custom_model "SERVICE && bus$preferred == false → ×0.1"
+        // dalej działa i router użyje jej tylko przy braku alternatywy.
+        BooleanEncodedValue busPreferred = em.getBooleanEncodedValue(BusFlagEncoder.KEY_BUS_PREFERRED);
+
+        way.setTag("highway", "service");
+        way.setTag("service", "driveway");
+        way.setTag("bus:on_route", "yes");
+        EncodingManager.AcceptWay acceptWay = new EncodingManager.AcceptWay();
+        assertTrue(em.acceptWay(way, acceptWay));
+        IntsRef edgeFlags = em.handleWayTags(way, acceptWay, em.createRelationFlags());
+        assertFalse(busPreferred.getBool(false, edgeFlags));
+    }
+
+    @Test
+    void testDrivewayOnBusRouteStillRespectsAccessNo() {
+        // Wyjątek dotyczy WYŁĄCZNIE reguły driveway/parking_aisle. Zakaz wjazdu (access=no bez
+        // wyjątku dla autobusu) rozstrzyga się niżej w getAccess i musi dalej blokować.
+        way.setTag("highway", "service");
+        way.setTag("service", "driveway");
+        way.setTag("bus:on_route", "yes");
+        way.setTag("access", "no");
+        assertTrue(encoder.getAccess(way).canSkip());
+    }
+
+    @Test
     void testTrackSkipped() {
         way.setTag("highway", "track");
         assertTrue(encoder.getAccess(way).canSkip());

@@ -297,9 +297,39 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         boolean busAllowedHere = way.hasTag(busAccess, intendedValues);
         boolean dedicatedBusway = VAL_BUSWAY.equals(highwayValue) || VAL_BUS_GUIDEWAY.equals(highwayValue);
 
-        // Drogi serwisowe prowadzące na parkingi/podjazdy — pomijamy, chyba że jawnie dla autobusu.
+        // Drogi serwisowe prowadzące na parkingi/podjazdy — pomijamy, chyba że jawnie dla autobusu
+        // (bus/psv) ALBO way należy do jakiejś relacji OSM route=bus (bus:on_route=yes).
+        //
+        // Wyjątek `isOnBusRoute` dołożony 2026-08-15 (linia 735 / trasa 665221, kraniec Zegrze Płd. 03).
+        // Przystanek końcowy stoi na parkingu, na który prowadzą DWA way'e highway=service +
+        // service=driveway (143492121 wjazd, 143492120 wyjazd, po ~62 m) bez żadnych innych tagów —
+        // bez access, bez bariery, bez ograniczeń gabarytowych. Ta reguła wycinała je z grafu, więc
+        // przystanku po prostu NIE DAŁO SIĘ osiągnąć: ORS odpowiadał błędem 2010 przy radius 50 m,
+        // a produkcja (która nie wysyła `radiuses`) po cichu przypinała przystanek do Warszawskiej
+        // 52 m dalej i rysowała kierowcy trasę urywającą się obok pinezki przystanku.
+        //
+        // To NIE jest kwestia tuningu: krawędzi nie było w grafie, więc żadna reguła custom_model
+        // (w tym SERVICE ×0.1) nie miała czego dotknąć. Sygnał `bus:on_route=yes` jest wstrzykiwany
+        // build-time przez script/transform_osm.py z tabeli PostGIS bus_route_ways
+        // (cron/osm2pgsql/import/bus_routes.lua = way'e WSZYSTKICH relacji route=bus), czyli mówi
+        // wprost "tędy jeździ jakaś linia autobusowa" — mieliśmy więc tę wiedzę i mimo to zamykaliśmy
+        // drogę. Oba way'e Zegrza są członkami relacji 4037485/4037486 (735 w obu kierunkach) oraz
+        // 16924613/16924614 (8P), a peron przystanku ma w OSM bus=yes.
+        //
+        // Dlaczego to bezpieczne: wyjątek otwiera dostęp, ale NIE ustawia bus$preferred (patrz
+        // isBusPreferredWay — psv/bus dalej wymagane), więc reguła custom_model
+        // `road_class == SERVICE && bus$preferred == false → ×0.1` (orsBusCustomModel.ts) zostaje
+        // aktywna. Router użyje takiej drogi tylko wtedy, gdy realnie nie ma alternatywy — czyli
+        // dokładnie w przypadku krańca na parkingu, a nie jako skrótu.
+        //
+        // Skala zmiany zmierzona przed wdrożeniem: w sieci jest 81 way'ów driveway/parking_aisle bez
+        // psv/bus należących do relacji route=bus, ale sweep końcówką /v2/snap/driving-bus po
+        // wszystkich 6168 przystankach tras GTFS pokazał tylko 5 przystanków z odchyleniem > 30 m
+        // (Zegrze Płd. 03 52 m, Dom Samotnej Matki 46 m, Palmiry 44 m, dwa zajezdniowe R-14).
+        // Pełny zapis: baza wiedzy, notatki/traska/analizy/735-zegrze-parking-driveway-poza-grafem.md.
         String serviceTag = way.getTag("service");
-        if (serviceTag != null && ("parking_aisle".equals(serviceTag) || "driveway".equals(serviceTag)) && !busAllowedHere) {
+        if (serviceTag != null && ("parking_aisle".equals(serviceTag) || "driveway".equals(serviceTag))
+                && !busAllowedHere && !isOnBusRoute(way)) {
             return EncodingManager.Access.CAN_SKIP;
         }
 
