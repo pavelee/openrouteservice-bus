@@ -33,6 +33,9 @@ ors-docker/files
 ors-docker/graphs_staging/
 ors-docker/graphs_old/
 ors-docker/graphs.failed/
+# Graf kopii ors_green (blue/green w repo Traski) i odłożone nieudane grafy.
+ors-docker/graphs_green/
+ors-docker/graphs*.failed/
 
 envs/
 ors-config-repo/

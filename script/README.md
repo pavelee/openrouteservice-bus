@@ -2,22 +2,32 @@
 
 ## Pełen refresh produkcji (ZALECANE) — `refresh-ors.sh`
 
-Jeden skrypt który robi wszystko: pobiera świeży PBF, konwertuje, nakłada
-transformacje mapy (interwencje z rejestru), **buduje nowe grafy ORS w
-izolowanym kontenerze** (`ors-builder` z profilu compose), robi atomic swap
-katalogów i restartuje `ors-app` na nowych grafach (okno ~1-3 min ładowania grafu; zero-downtime wróci po merge gałęzi zero_down_time).
+Jeden skrypt który robi wszystko: pobiera świeży PBF, nakłada transformacje
+mapy (interwencje z rejestru), **buduje nowe grafy ORS w izolowanym kontenerze**
+(`ors-builder` z profilu compose), przenosi je do katalogu **nieaktywnej** kopii
+ORS i przełącza na nią ruch bez przerwy (`scripts/ors-switch.sh` w repo Traski).
+
+Kopie ORS żyją w `docker-compose.yml` repo Traski: `ors_blue` czyta graf
+z `ors-docker/graphs`, `ors_green` z `ors-docker/graphs_green`. Działa jedna,
+proxy Caddy kieruje ruch na tę zdrową. Usługa `ors-app` z compose tego
+submodułu NIE jest produkcją (zajmuje port 8080), nie uruchamiaj jej obok.
 
 ```bash
-# Uruchomienie (z dowolnego cwd — skrypt sam ustala ścieżki)
+# Uruchomienie (z dowolnego cwd, skrypt sam ustala ścieżki)
 ./script/refresh-ors.sh
 ```
 
 Zachowanie:
-- Lock w `/tmp/traska-refresh-ors.lock` — dwie instancje równolegle nie pójdą.
+- Lock w `/tmp/traska-refresh-ors.lock`, dwie instancje równolegle nie pójdą.
 - Pliki staging w `ors-docker/files/staging/` i grafy w `ors-docker/graphs_staging/`.
-- Po sukcesie: czyści staging + `graphs_old`, kasuje `mazowieckie.osm.prev`.
-- Po błędzie **po swapie**: automatyczny rollback do `graphs_old` i `.prev`, zostawia `graphs.failed` / `mazowieckie.osm.failed` do inspekcji.
-- Po błędzie **przed swapem**: rollbacka nie ma — produkcja nietknięta.
+- Nowa kopia ładuje graf obok działającej. Stara gaśnie dopiero, gdy nowa jest zdrowa.
+- Po sukcesie: czyści staging, kasuje `mazowieckie.osm.pbf.prev`. Graf poprzedniej
+  kopii zostaje, więc cofnięcie to `scripts/ors-switch.sh` (w repo Traski).
+- Po błędzie przełączenia: ruch obsługuje stara kopia, nowy graf ląduje w
+  `graphs*.failed`, mapa wraca z `.prev` (błędna w `mazowieckie.osm.pbf.failed`).
+- Po błędzie przed podmianą: produkcja nietknięta.
+- Przerywa przed buildem, gdy ORS z compose Traski montuje inny katalog
+  `ors-docker` niż ten, do którego pisze builder (`TRASKA_ORS_DIR`).
 
 Wymagania: `docker`, `wget`, lokalny venv pod `script/env/` (osmium + lxml).
 

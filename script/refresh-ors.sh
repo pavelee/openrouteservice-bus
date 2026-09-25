@@ -7,14 +7,15 @@
 #   2. Transformacja mapy (transform_osm.py, PBF→PBF): interwencje z rejestru
 #      (blokady, korekty tagów, pominięcia relacji, synthetic ways, bus:on_route)
 #   3. Uruchamia ors-builder z profilu compose i czeka aż zbuduje grafy do graphs_staging/
-#   4. Zatrzymuje buildera, robi atomic swap (graphs → graphs_old, graphs_staging → graphs)
-#   5. Recreate ors-app z ROOT compose na nowych grafach i czeka na ready.
-#      UWAGA: okno niedostępności = czas ładowania grafu (~1-3 min). Zero-downtime
-#      (traefik + docker rollout) żyje na gałęzi `zero_down_time` i wróci po jej
-#      merge — obecny main ma container_name + sztywny port, rollout nie zadziała.
-#   6. Na sukces — sprząta. Na błąd po swapie — ROLLBACK do graphs_old.
+#   4. Zatrzymuje buildera, przenosi graphs_staging do katalogu NIEAKTYWNEJ kopii ORS
+#      (ors_blue: graphs, ors_green: graphs_green; scripts/ors-switch.sh --next)
+#   5. Przełącza ruch na tę kopię (scripts/ors-switch.sh): nowa ładuje graf obok
+#      działającej, stara gaśnie dopiero, gdy nowa jest zdrowa. Bez przerwy.
+#   6. Na sukces sprząta. Na błąd stara kopia serwuje dalej na starym grafie,
+#      nowy graf trafia do <katalog>.failed, mapa wraca z .prev.
 #
-# Build (~15–30 min) idzie obok produkcji (stary ors-app serwuje przez cały build).
+# Build (~15–30 min) idzie obok produkcji (aktywna kopia serwuje przez cały build).
+# Cofnięcie po udanym refreshu: scripts/ors-switch.sh (graf poprzedniej kopii zostaje).
 #
 # Wymagania: docker, wget, venv pod script/env/ z osmium (pyosmium).
 #
@@ -30,16 +31,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${ORS_ROOT}/docker-compose.yml"
 
-# Repo root compose (definiuje faktyczny produkcyjny ors-app).
+# Repo root compose (definiuje produkcyjne kopie ORS: ors_blue i ors_green).
 # COMPOSE_FILE (submodule) służy tylko do ors-builder (profil "builder").
 ROOT_COMPOSE_FILE="$(cd "${ORS_ROOT}/.." && pwd)/docker-compose.yml"
 
 ORS_DOCKER="${ORS_ROOT}/ors-docker"
 FILES_DIR="${ORS_DOCKER}/files"
 STAGING_DIR="${FILES_DIR}/staging"
-GRAPHS_DIR="${ORS_DOCKER}/graphs"
 GRAPHS_STAGING="${ORS_DOCKER}/graphs_staging"
-GRAPHS_OLD="${ORS_DOCKER}/graphs_old"
+# Przełączanie kopii ORS (repo Traski). Katalog grafu kopii docelowej ustala krok 4.
+ORS_SWITCH="$(cd "${ORS_ROOT}/.." && pwd)/scripts/ors-switch.sh"
+TARGET_COLOR=""
+TARGET_GRAPHS=""
 
 OSM_URL="https://download.geofabrik.de/europe/poland/mazowieckie-latest.osm.pbf"
 PBF_FILE="${STAGING_DIR}/mazowieckie-latest.osm.pbf"
@@ -51,10 +54,7 @@ PROD_MAP="${FILES_DIR}/mazowieckie.osm.pbf"
 PROD_MAP_BACKUP="${FILES_DIR}/mazowieckie.osm.pbf.prev"
 
 VENV_PYTHON="${SCRIPT_DIR}/env/bin/python3"
-LOCK_DIR="/tmp/traska-refresh-ors.lock"
-
-# Endpoint do healthchecka ORS (z poziomu hosta, dla ors-app)
-ORS_APP_HEALTH_URL="http://localhost:8080/ors/v2/health"
+LOCK_DIR="${REFRESH_ORS_LOCK_DIR:-/tmp/traska-refresh-ors.lock}"
 
 # Rejestr interwencji routingowych (aplikacja web) — źródło danych transformacji
 # mapy (transform_osm.py) i cel callbacku "baked" po udanym restarcie. CRON_SECRET
@@ -79,14 +79,9 @@ GRAPH_INTERVENTIONS_SNAPSHOT="${FILES_DIR}/graph-interventions-snapshot.json"
 # Timeouty
 BUILDER_TIMEOUT=3600    # 60 min na build grafów
 BUILDER_POLL=30
-ORS_APP_TIMEOUT=300     # 5 min na start ors-app (załadowanie nowego grafu do ready)
-ORS_APP_POLL=5
 
-# Stan dla rollbacka — czy zdążyliśmy podmienić katalogi
+# Stan dla rollbacka: czy graf i mapa są już podmienione.
 SWAPPED=0
-# Czy krok 5 zdążył zdjąć stary kontener ors-app (wtedy rollback musi go odtworzyć,
-# nawet jeśli jakiś kontener o tej nazwie "działa" — może być w crash-loopie).
-REPLACED=0
 
 # ============================== Logowanie ====================================
 
@@ -129,11 +124,13 @@ fi
 rollback() {
     err "ROLLBACK: przywracam poprzedni stan"
 
-    if [ -d "${GRAPHS_OLD}" ]; then
-        rm -rf "${GRAPHS_DIR}.failed" 2>/dev/null || true
-        [ -d "${GRAPHS_DIR}" ] && mv "${GRAPHS_DIR}" "${GRAPHS_DIR}.failed"
-        mv "${GRAPHS_OLD}" "${GRAPHS_DIR}"
-        log "✓ Grafy przywrócone (failed wersja w graphs.failed)"
+    # Aktywna kopia ORS nie była ruszana (ors-switch.sh gasi ją dopiero po
+    # zdrowym starcie nowej). Wystarczy, że nowy graf nie będzie kandydatem
+    # do przełączenia, a mapa wróci do poprzedniej.
+    if [ -n "${TARGET_GRAPHS}" ] && [ -d "${TARGET_GRAPHS}" ]; then
+        rm -rf "${TARGET_GRAPHS}.failed" 2>/dev/null || true
+        mv "${TARGET_GRAPHS}" "${TARGET_GRAPHS}.failed"
+        log "✓ Nowy graf odłożony do $(basename "${TARGET_GRAPHS}").failed"
     fi
 
     if [ -f "${PROD_MAP_BACKUP}" ]; then
@@ -143,21 +140,7 @@ rollback() {
         log "✓ Mapa przywrócona (failed wersja w mazowieckie.osm.pbf.failed)"
     fi
 
-    # Po przywróceniu plików upewnij się, że ors-app działa NA PRZYWRÓCONYCH
-    # grafach. Jeśli krok 5 zdążył podmienić kontener (REPLACED=1), ZAWSZE
-    # odtwarzamy — kontener po nieudanym starcie bywa "running" w crash-loopie
-    # i sam test `docker ps` kłamie (awaria 2026-07-09: kontener na złym obrazie
-    # restartował się w kółko, a rollback zostawiał go "bez zmian").
-    if [ "${REPLACED}" -eq 1 ] || ! docker ps --format '{{.Names}}' | grep -q '^ors-app$'; then
-        log "Odtwarzam ors-app na przywróconych grafach..."
-        docker rm -f ors-app >/dev/null 2>&1 || true
-        docker compose -f "${ROOT_COMPOSE_FILE}" up -d ors-app >/dev/null 2>&1 \
-            || err "Nie udało się przywrócić ors-app — wymagana ręczna interwencja"
-    else
-        log "ors-app nadal działa (stary kontener, błąd przed restartem) — bez zmian"
-    fi
-
-    err "ROLLBACK ZAKOŃCZONY. Sprawdź ors-app i pliki *.failed."
+    err "ROLLBACK ZAKOŃCZONY. Ruch obsługuje poprzednia kopia: bash ${ORS_SWITCH} --status"
 }
 
 cleanup() {
@@ -193,6 +176,17 @@ command -v wget   >/dev/null || { err "wget nie znaleziony w PATH"; exit 1; }
 [ -x "${VENV_PYTHON}" ]      || { err "Brak python3 w venv: ${VENV_PYTHON}"; exit 1; }
 [ -f "${COMPOSE_FILE}" ]     || { err "Brak compose: ${COMPOSE_FILE}"; exit 1; }
 [ -d "${FILES_DIR}" ]        || { err "Brak katalogu: ${FILES_DIR}"; exit 1; }
+[ -f "${ORS_SWITCH}" ]       || { err "Brak ${ORS_SWITCH} (repo Traski z blue/green ORS)"; exit 1; }
+
+# Kopia docelowa i jej katalog grafu. Builder pisze do ${ORS_DOCKER}, więc
+# ORS z compose Traski musi montować ten sam katalog (TRASKA_ORS_DIR).
+read -r TARGET_COLOR TARGET_GRAPHS < <(bash "${ORS_SWITCH}" --next) || true
+[ -n "${TARGET_GRAPHS}" ] || { err "ors-switch.sh --next nie wskazał kopii docelowej"; exit 1; }
+if [ "$(cd "$(dirname "${TARGET_GRAPHS}")" 2>/dev/null && pwd -P)" != "$(cd "${ORS_DOCKER}" && pwd -P)" ]; then
+    err "ORS w compose Traski montuje $(dirname "${TARGET_GRAPHS}"), a builder pisze do ${ORS_DOCKER}"
+    exit 1
+fi
+log "Kopia docelowa: ors_${TARGET_COLOR} (graf: ${TARGET_GRAPHS})"
 
 log "Czyszczę staging z poprzednich biegów..."
 rm -rf "${STAGING_DIR}" "${GRAPHS_STAGING}"
@@ -227,7 +221,7 @@ rm -f "${PBF_FILE}"
 step "3/5 Build grafów (ors-builder)"
 mkdir -p "${GRAPHS_STAGING}"
 
-# Builder dzieli obraz z ors-app (lokalny fork). Jeśli image nie istnieje,
+# Builder dzieli obraz z kopiami ORS (lokalny fork). Jeśli image nie istnieje,
 # zbudujmy go zawczasu — inaczej `up -d` zrobi to "po cichu" i timeout
 # pollingu zdrowia może źle zinterpretować długi czas budowania obrazu.
 #
@@ -288,21 +282,34 @@ if [ -z "$(ls -A "${GRAPHS_STAGING}" 2>/dev/null)" ]; then
 fi
 log "✓ graphs_staging zapełniony"
 
-# ============================== 5. Atomic swap ===============================
+# ============================== 4. Graf do kopii docelowej ===================
 
-step "4/5 Atomic swap"
+step "4/5 Graf i mapa do kopii ors_${TARGET_COLOR}"
 
-# Usuń pozostałości po poprzednim udanym biegu (gdyby cleanup się nie wykonał)
-rm -rf "${GRAPHS_OLD}"
+# Bezpiecznik obrazu: kopie ORS MUSZĄ chodzić na obrazie lokalnego forka,
+# tym samym, którym builder zbudował grafy. Awaria 2026-07-09: root compose
+# wskazywał tag upstreamowy, docker ściągnął czysty obraz z Docker Huba (bez
+# profilu driving-bus) i ORS wpadł w crash-loop.
+if ! docker compose -f "${ROOT_COMPOSE_FILE}" --profile "ors-${TARGET_COLOR}" config "ors_${TARGET_COLOR}" 2>/dev/null \
+       | grep -q 'image: local/openrouteservice:v9.4.0'; then
+    err "ROOT compose nie wskazuje obrazu local/openrouteservice:v9.4.0 dla ors_${TARGET_COLOR}"
+    err "(ORS wstałby z innego obrazu niż grafy; przerwano PRZED podmianą)"
+    exit 1
+fi
 
-# Po tym punkcie zaczyna się stan "świat zmieniony" — rollback aktywny
+# Kopia docelowa nie mogła zmienić się w trakcie buildu (ręczne przełączenie).
+if [ "$(bash "${ORS_SWITCH}" --next)" != "${TARGET_COLOR} ${TARGET_GRAPHS}" ]; then
+    err "Aktywna kopia ORS zmieniła się w trakcie buildu. Przerwano PRZED podmianą."
+    exit 1
+fi
+
+# Od tego punktu rollback odkłada nowy graf i przywraca mapę.
 SWAPPED=1
 
-if [ -d "${GRAPHS_DIR}" ]; then
-    mv "${GRAPHS_DIR}" "${GRAPHS_OLD}"
-fi
-mv "${GRAPHS_STAGING}" "${GRAPHS_DIR}"
-log "✓ graphs → graphs_old, graphs_staging → graphs"
+# Katalog kopii nieaktywnej trzyma graf sprzed dwóch refreshy: nikt go nie serwuje.
+rm -rf "${TARGET_GRAPHS}"
+mv "${GRAPHS_STAGING}" "${TARGET_GRAPHS}"
+log "✓ graphs_staging → $(basename "${TARGET_GRAPHS}")"
 
 if [ -f "${PROD_MAP}" ]; then
     mv "${PROD_MAP}" "${PROD_MAP_BACKUP}"
@@ -310,69 +317,17 @@ fi
 mv "${MAP_PROCESSED}" "${PROD_MAP}"
 log "✓ mazowieckie.osm.pbf podmieniony (backup w .prev)"
 
-# ============================== 5. Restart ors-app ===========================
+# ============================== 5. Przełączenie ==============================
 
-step "5/5 Restart ors-app na nowych grafach"
+step "5/5 Przełączenie ruchu na ors_${TARGET_COLOR}"
 
-# UWAGA: to NIE jest zero-downtime. `docker rollout` wymaga usługi bez
-# container_name i bez sztywno publikowanego portu (druga replika musi móc
-# wstać obok) — taką topologię (traefik przed usługami) ma gałąź
-# `zero_down_time` (commit "Zero downtime konfiguracja"), która nigdy nie
-# weszła na main. Na mainie ors-app ma container_name=ors-app i port
-# 8080:8082, więc rollout kończył się konfliktem nazwy — tym bardziej, że
-# produkcyjny kontener bywał startowany z compose SUBMODUŁU (inny projekt
-# compose), przez co rollout w ogóle nie widział "swojej" usługi.
-#
-# Robimy więc deterministyczny recreate: zdejmij DOWOLNY kontener o nazwie
-# ors-app (niezależnie od projektu compose, który go stworzył), postaw z ROOT
-# compose i czekaj na ready. Okno niedostępności = czas ładowania grafu
-# (zwykle 1-3 min). Prawdziwy zero-downtime wróci po merge gałęzi zero_down_time.
-# Bezpiecznik obrazu: ors-app MUSI chodzić na obrazie lokalnego forka —
-# dokładnie tym, którym builder zbudował grafy. Awaria 2026-07-09: root compose
-# wskazywał tag upstreamowy, docker ściągnął czysty obraz z Docker Huba (bez
-# profilu driving-bus) i ors-app wpadł w crash-loop.
-if ! docker compose -f "${ROOT_COMPOSE_FILE}" config ors-app 2>/dev/null \
-       | grep -q 'image: local/openrouteservice:v9.4.0'; then
-    err "ROOT compose nie wskazuje obrazu local/openrouteservice:v9.4.0 dla ors-app"
-    err "(ors-app zbudowałby się z innego obrazu niż grafy — przerwano PRZED restartem)"
+# ors-switch.sh czeka na healthcheck nowej kopii (ładowanie grafu) i dopiero
+# wtedy gasi starą. Porażka = stara kopia dalej serwuje, tu tylko rollback plików.
+if ! bash "${ORS_SWITCH}" --to "${TARGET_COLOR}"; then
+    err "ors_${TARGET_COLOR} nie wstał na nowym grafie"
     exit 1
 fi
-
-if docker ps -a --format '{{.Names}}' | grep -q '^ors-app$'; then
-    log "Zdejmuję istniejący kontener ors-app (niezależnie od projektu compose)..."
-    docker rm -f ors-app >/dev/null
-fi
-# Od tego momentu stary kontener nie istnieje — rollback MUSI odtworzyć ors-app.
-REPLACED=1
-log "Startuję ors-app z ROOT compose..."
-docker compose -f "${ROOT_COMPOSE_FILE}" up -d ors-app
-
-log "Czekam na ready przez ${ORS_APP_HEALTH_URL} (timeout ${ORS_APP_TIMEOUT}s — ładowanie grafu)..."
-start_ts=$(date +%s)
-while true; do
-    elapsed=$(( $(date +%s) - start_ts ))
-    if [ ${elapsed} -gt ${ORS_APP_TIMEOUT} ]; then
-        err "ors-app nie odpowiada 'ready' po ${elapsed}s od restartu"
-        docker logs --tail=40 ors-app 2>&1 | tail -20 >&2 || true
-        exit 1
-    fi
-
-    # Fail-fast na crash-loop: restart-count rośnie = kontener umiera przy
-    # starcie (np. zły obraz/config) — nie ma sensu czekać do timeoutu.
-    restarts=$(docker inspect -f '{{.RestartCount}}' ors-app 2>/dev/null || echo 0)
-    if [ "${restarts:-0}" -ge 2 ]; then
-        err "ors-app w crash-loopie (RestartCount=${restarts}) — logi:"
-        docker logs --tail=40 ors-app 2>&1 | tail -20 >&2 || true
-        exit 1
-    fi
-
-    if wget -qO- "${ORS_APP_HEALTH_URL}" 2>/dev/null | grep -q '"status":"ready"'; then
-        log "✓ ors-app READY (weryfikacja end-to-end, ${elapsed}s)"
-        break
-    fi
-
-    sleep ${ORS_APP_POLL}
-done
+log "✓ Ruch obsługuje ors_${TARGET_COLOR}"
 
 # ============================== Callback "baked" =============================
 
@@ -406,11 +361,10 @@ fi
 # ============================== Cleanup po sukcesie ==========================
 
 step "Cleanup"
-rm -rf "${GRAPHS_OLD}"
 rm -f  "${PROD_MAP_BACKUP}"
 rm -rf "${STAGING_DIR}"
-# Artefakty ewentualnych poprzednich NIEUDANYCH biegów — po sukcesie zbędne.
-rm -rf "${GRAPHS_DIR}.failed"
+# Artefakty poprzednich NIEUDANYCH biegów i układu sprzed blue/green, po sukcesie zbędne.
+rm -rf "${ORS_DOCKER}"/graphs*.failed "${ORS_DOCKER}/graphs_old"
 rm -f  "${PROD_MAP}.failed"
 log "✓ Usunięto staging, backupy i artefakty .failed"
 

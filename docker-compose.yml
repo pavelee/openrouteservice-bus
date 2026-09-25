@@ -3,6 +3,8 @@
 
 services:
   # ----------------- ORS application configuration ------------------- #
+  # NIE produkcja: produkcyjne kopie ORS (ors_blue, ors_green) są w compose repo
+  # Traski. Ta usługa zajmuje port 8080, nie uruchamiaj jej obok nich.
   ors-app:
     platform: linux/amd64
     # Activate the following lines to build the container from the repository
