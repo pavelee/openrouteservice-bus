@@ -1,0 +1,4 @@
+# venv dla transform_osm.py (refresh-ors.sh): python3 -m venv script/env && script/env/bin/pip install -r script/requirements.txt
+# Tylko osmium, reszta to biblioteka standardowa. 4.0.2 ma gotowe paczki do Pythona 3.13,
+# 4.3.1 także dla 3.14; wynik transformacji obu sprawdzony jako identyczny (2026-09-25).
+osmium>=4.0.2,<5

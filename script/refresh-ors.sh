@@ -173,7 +173,8 @@ step "Preflight"
 
 command -v docker >/dev/null || { err "docker nie znaleziony w PATH"; exit 1; }
 command -v wget   >/dev/null || { err "wget nie znaleziony w PATH"; exit 1; }
-[ -x "${VENV_PYTHON}" ]      || { err "Brak python3 w venv: ${VENV_PYTHON}"; exit 1; }
+[ -x "${VENV_PYTHON}" ]      || { err "Brak python3 w venv: ${VENV_PYTHON}"
+    err "Przygotowanie: python3 -m venv ${SCRIPT_DIR}/env && ${SCRIPT_DIR}/env/bin/pip install -r ${SCRIPT_DIR}/requirements.txt"; exit 1; }
 [ -f "${COMPOSE_FILE}" ]     || { err "Brak compose: ${COMPOSE_FILE}"; exit 1; }
 [ -d "${FILES_DIR}" ]        || { err "Brak katalogu: ${FILES_DIR}"; exit 1; }
 [ -f "${ORS_SWITCH}" ]       || { err "Brak ${ORS_SWITCH} (repo Traski z blue/green ORS)"; exit 1; }

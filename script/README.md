@@ -29,9 +29,32 @@ Zachowanie:
 - Przerywa przed buildem, gdy ORS z compose Traski montuje inny katalog
   `ors-docker` niż ten, do którego pisze builder (`TRASKA_ORS_DIR`).
 
-Wymagania: `docker`, `wget`, lokalny venv pod `script/env/` (osmium + lxml).
+Wymagania: `docker`, `wget`, lokalny venv pod `script/env/` z modułem `osmium`.
+Skrypt uruchamia się na hoście z katalogu repo Traski, nie w kontenerze (woła `docker compose`
+ze ścieżkami hosta; sam stawia kontener `ors-builder`).
 
-Czas: ~20–40 min (głównie build grafów). Można odpalić w tle:
+### Przygotowanie maszyny (raz)
+
+```bash
+cd openrouteservice-bus
+python3 -m venv script/env
+script/env/bin/pip install -r script/requirements.txt
+script/env/bin/python -c 'import osmium'     # bez błędu = gotowe
+command -v wget || brew install wget
+```
+
+- `requirements.txt` to tylko `osmium` (`lxml` i `requests` nie są potrzebne: skrypt używa
+  biblioteki standardowej).
+- `osmium` 4.0.2 ma gotowe paczki dla Pythona do 3.13, 4.3.1 także dla 3.14. Gdy pip zaczyna
+  kompilować (`Building wheel for osmium`), brakuje paczki dla tej wersji Pythona: albo
+  `python3.13 -m venv script/env`, albo `brew install cmake boost` i powtórka.
+- Brak venv kończy się w preflight komunikatem „Brak python3 w venv” z tym poleceniem.
+
+Na macmini pierwszy raz 2026-09-25: preflight padł na braku venv, po przygotowaniu cały
+refresh trwał 6 min 49 s (pobranie 4 s, transformacja 255 s, build grafu 121 s, przełączenie
+ORS 23 s).
+
+Czas na macmini: około 7 min (pierwszy refresh 2026-09-25). Można odpalić w tle:
 `nohup ./script/refresh-ors.sh > refresh.log 2>&1 &`.
 
 ## Transformacja mapy — `transform_osm.py`
