@@ -7,7 +7,8 @@ wielogigabajtowego XML pośredniego i bez ręcznie pisanego serializera.
 
 Transformacje (kolejność per way):
  1. WAY_BLOCK      — highway=construction (wycięcie z grafu),
- 2. TAG_OVERRIDE   — setTags: nadpisz istniejący tag / dołóż brakujący,
+ 2. TAG_OVERRIDE   — setTags: nadpisz istniejący tag / dołóż brakujący
+    (way'e z `wayIds`, a także węzły z `nodeIds`, np. psv=yes na szlabanie),
  3. strip access   — usunięcie access=private/no (STRIP_ACCESS_TAGS, patrz niżej),
  4. bus:on_route   — tag dla way'ów z relacji OSM route=bus (EV bus$on_route),
 oraz:
@@ -106,10 +107,13 @@ def _merge_export(payload):
     for entry in payload.get('wayBlocks', []):
         block_way_ids.update(str(i) for i in (entry.get('wayIds') or []))
     tag_overrides = {}
+    node_tag_overrides = {}
     for entry in payload.get('tagOverrides', []):
         defn = entry.get('tagOverride') or {}
         for way_id in defn.get('wayIds') or []:
             tag_overrides.setdefault(str(way_id), {}).update(defn.get('setTags') or {})
+        for node_id in defn.get('nodeIds') or []:
+            node_tag_overrides.setdefault(str(node_id), {}).update(defn.get('setTags') or {})
     skip_relations = {str(i) for entry in payload.get('relationSkips', [])
                       for i in (entry.get('relationIds') or [])}
     intervention_ids = [
@@ -123,6 +127,7 @@ def _merge_export(payload):
         'synthetic_ways': ways,
         'block_way_ids': block_way_ids,
         'tag_overrides': tag_overrides,
+        'node_tag_overrides': node_tag_overrides,
         'skip_relations': skip_relations,
         'bus_route_way_ids': bus_route_way_ids,
         'intervention_ids': [i for i in intervention_ids if isinstance(i, int)],
@@ -139,6 +144,7 @@ def load_graph_interventions():
         'synthetic_ways': {w['id']: w for w in SYNTHETIC_WAYS_BOOTSTRAP},
         'block_way_ids': set(WAY_BLOCKS_BOOTSTRAP),
         'tag_overrides': {k: dict(v) for k, v in TAG_OVERRIDES_BOOTSTRAP.items()},
+        'node_tag_overrides': {},
         'skip_relations': set(RELATION_SKIPS_BOOTSTRAP),
         'bus_route_way_ids': set(),
         'intervention_ids': [],
@@ -192,13 +198,16 @@ def load_graph_interventions():
         data['block_way_ids'] |= merged['block_way_ids']
         for way_id, tags in merged['tag_overrides'].items():
             data['tag_overrides'].setdefault(way_id, {}).update(tags)
+        for node_id, tags in merged['node_tag_overrides'].items():
+            data['node_tag_overrides'].setdefault(node_id, {}).update(tags)
         data['skip_relations'] |= merged['skip_relations']
         data['bus_route_way_ids'] = merged['bus_route_way_ids']
         data['intervention_ids'] = merged['intervention_ids']
 
     print(f"✓ Interwencje grafowe ze źródła: {source} — "
           f"{len(data['synthetic_ways'])} synthetic, {len(data['block_way_ids'])} block, "
-          f"{len(data['tag_overrides'])} tag-override, {len(data['skip_relations'])} rel-skip, "
+          f"{len(data['tag_overrides'])} tag-override, "
+          f"{len(data['node_tag_overrides'])} tag-override węzłów, {len(data['skip_relations'])} rel-skip, "
           f"{len(data['bus_route_way_ids'])} bus_route_way_ids")
 
     manifest_path = os.environ.get('SYNTHETIC_WAYS_MANIFEST')
@@ -228,10 +237,21 @@ class TransformHandler(osmium.SimpleHandler):
         # Guard na reprocessing: way'e syntetyczne obecne w wejściu nie są
         # wstrzykiwane ponownie (duplikat ID).
         self.synthetic_in_input = set()
-        self.stats = {'ways': 0, 'blocked': 0, 'overridden': 0,
+        self.stats = {'ways': 0, 'blocked': 0, 'overridden': 0, 'nodes_overridden': 0,
                       'access_stripped': 0, 'on_route': 0, 'relations_skipped': 0}
 
     def node(self, n):
+        # TAG_OVERRIDE na węźle: ta sama semantyka "set" co dla way'a. Potrzebne dla
+        # barier, bo strip access działa tylko na way'ach, a szlaban z access=private
+        # enkoder przepuszcza wyłącznie z bus/psv (BusFlagEncoder.handleNodeTags).
+        # Przypadek: pętla Os. Górczewska, szlabany 10821146908/10821146909 (2026-09-27).
+        override = self.iv['node_tag_overrides'].get(str(n.id))
+        if override:
+            tags = dict(n.tags)
+            tags.update(override)
+            self.stats['nodes_overridden'] += 1
+            self.w.add_node(n.replace(tags=tags))
+            return
         self.w.add_node(n)
 
     def way(self, w):
@@ -330,6 +350,7 @@ def transform(input_file, output_file, interventions, strip_access=True):
     print("\nTransformacja zakończona:")
     print(f"  - ways: {s['ways']:,} (blocked {s['blocked']}, tag-override {s['overridden']}, "
           f"access-strip {s['access_stripped']}, bus:on_route {s['on_route']})")
+    print(f"  - nodes: tag-override {s['nodes_overridden']}")
     print(f"  - relations skipped: {s['relations_skipped']}")
     print(f"  - czas: {time.time() - start:.1f} s")
     print(f"  - wejście:  {os.path.getsize(input_file) / 1024 / 1024:.1f} MB")

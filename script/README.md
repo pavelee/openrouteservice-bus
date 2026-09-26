@@ -49,6 +49,7 @@ command -v wget || brew install wget
   kompilować (`Building wheel for osmium`), brakuje paczki dla tej wersji Pythona: albo
   `python3.13 -m venv script/env`, albo `brew install cmake boost` i powtórka.
 - Brak venv kończy się w preflight komunikatem „Brak python3 w venv” z tym poleceniem.
+- Testy transformacji: `script/env/bin/python -m unittest script/test_transform_osm.py`.
 
 Na macmini pierwszy raz 2026-09-25: preflight padł na braku venv, po przygotowaniu cały
 refresh trwał 6 min 49 s (pobranie 4 s, transformacja 255 s, build grafu 121 s, przełączenie
