@@ -89,6 +89,9 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     private static final double BUS_MAX_HEIGHT = 3.0;   // metry
     private static final double BUS_MAX_LENGTH = 18.75; // metry (max autobus przegubowy w UE)
 
+    // Podtypy service=*, które nie są drogą autobusu: alejka parkingu, podjazd, pas do okienka.
+    private static final Set<String> NON_BUS_SERVICE_VALUES = Set.of("parking_aisle", "driveway", "drive-through");
+
     private static final int MEAN_SPEED = 50;
 
     protected final HashSet<String> forwardKeys = new HashSet<>(5);
@@ -327,8 +330,12 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         // wszystkich 6168 przystankach tras GTFS pokazał tylko 5 przystanków z odchyleniem > 30 m
         // (Zegrze Płd. 03 52 m, Dom Samotnej Matki 46 m, Palmiry 44 m, dwa zajezdniowe R-14).
         // Pełny zapis: baza wiedzy, notatki/traska/analizy/735-zegrze-parking-driveway-poza-grafem.md.
+        //
+        // drive-through dołożone 2026-09-26: McDrive przy pętli Os. Górczewska przyciągał słupki
+        // 09..12 (43-52 m). Sweep 6237 słupków: nikt poza nimi się do niego nie dopina, żadna trasa
+        // nie jedzie przez okienko. Zapis: notatki/traska/analizy/ors-drive-through-pomijanie-w-enkoderze.md.
         String serviceTag = way.getTag("service");
-        if (serviceTag != null && ("parking_aisle".equals(serviceTag) || "driveway".equals(serviceTag))
+        if (serviceTag != null && NON_BUS_SERVICE_VALUES.contains(serviceTag)
                 && !busAllowedHere && !isOnBusRoute(way)) {
             return EncodingManager.Access.CAN_SKIP;
         }

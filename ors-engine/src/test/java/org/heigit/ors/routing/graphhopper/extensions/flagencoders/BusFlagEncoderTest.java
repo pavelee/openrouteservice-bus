@@ -131,6 +131,40 @@ class BusFlagEncoderTest {
     }
 
     @Test
+    void testDriveThroughSkipped() {
+        // McDrive 896478706 przy pętli Os. Górczewska przyciągał słupki 09..12 na 43-52 m.
+        way.setTag("highway", "service");
+        way.setTag("service", "drive-through");
+        way.setTag("oneway", "yes");
+        assertTrue(encoder.getAccess(way).canSkip());
+    }
+
+    @Test
+    void testDriveThroughWithPsvAccessible() {
+        // Furtka: TAG_OVERRIDE psv=yes zostawia wybrany pas w grafie bez zmiany kodu.
+        way.setTag("highway", "service");
+        way.setTag("service", "drive-through");
+        way.setTag("psv", "yes");
+        assertTrue(encoder.getAccess(way).isWay());
+    }
+
+    @Test
+    void testDriveThroughOnBusRouteAccessible() {
+        BooleanEncodedValue busPreferred = em.getBooleanEncodedValue(BusFlagEncoder.KEY_BUS_PREFERRED);
+
+        way.setTag("highway", "service");
+        way.setTag("service", "drive-through");
+        way.setTag("bus:on_route", "yes");
+        assertTrue(encoder.getAccess(way).isWay());
+
+        // Jak przy driveway: dostęp tak, bus$preferred nie, więc kara SERVICE x0.1 zostaje.
+        EncodingManager.AcceptWay acceptWay = new EncodingManager.AcceptWay();
+        assertTrue(em.acceptWay(way, acceptWay));
+        IntsRef edgeFlags = em.handleWayTags(way, acceptWay, em.createRelationFlags());
+        assertFalse(busPreferred.getBool(false, edgeFlags));
+    }
+
+    @Test
     void testTrackSkipped() {
         way.setTag("highway", "track");
         assertTrue(encoder.getAccess(way).canSkip());
