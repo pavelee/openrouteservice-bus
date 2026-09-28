@@ -37,6 +37,8 @@ ors-docker/graphs.failed/
 ors-docker/graphs_green/
 ors-docker/graphs*.failed/
 
+script/env/
+
 envs/
 ors-config-repo/
 
