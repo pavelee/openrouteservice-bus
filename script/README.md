@@ -12,6 +12,11 @@ z `ors-docker/graphs`, `ors_green` z `ors-docker/graphs_green`. Działa jedna,
 proxy Caddy kieruje ruch na tę zdrową. Usługa `ors-app` z compose tego
 submodułu NIE jest produkcją (zajmuje port 8080), nie uruchamiaj jej obok.
 
+Zbudowany graf nie należy do repozytorium. Każda maszyna buduje własny graf
+przez `script/refresh-ors.sh` przed użyciem nowej kopii ORS. `git pull` ani
+`git submodule update` nie dostarczają grafu. Przy pierwszym pobraniu zmiany
+usuwającej dawny graf z indeksu zastosuj procedurę z `docs/wdrozenia.md` w Trasce.
+
 ```bash
 # Uruchomienie (z dowolnego cwd, skrypt sam ustala ścieżki)
 ./script/refresh-ors.sh

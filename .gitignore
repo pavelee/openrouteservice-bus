@@ -27,7 +27,7 @@ ors-api/src/main/resources/ors-config*
 ors-config*
 # ors-docker/**
 ors-docker/files
-!ors-docker/graphs
+/ors-docker/graphs/
 
 # Katalogi tymczasowe refresh-ors.sh — nie commitujemy ich
 ors-docker/graphs_staging/
