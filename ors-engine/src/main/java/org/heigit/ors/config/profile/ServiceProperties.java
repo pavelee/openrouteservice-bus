@@ -19,6 +19,7 @@ public class ServiceProperties {
     private Integer maximumVisitedNodes;
     private Boolean forceTurnCosts;
     private Boolean allowCustomModels;
+    private Boolean headingAwareSnap;
     private ExecutionProperties execution = new ExecutionProperties();
 
     public ServiceProperties() {
@@ -39,6 +40,7 @@ public class ServiceProperties {
         maximumVisitedNodes = ofNullable(this.maximumVisitedNodes).orElse(other.maximumVisitedNodes);
         forceTurnCosts = ofNullable(forceTurnCosts).orElse(other.forceTurnCosts);
         allowCustomModels = ofNullable(allowCustomModels).orElse(other.allowCustomModels);
+        headingAwareSnap = ofNullable(headingAwareSnap).orElse(other.headingAwareSnap);
         execution.merge(other.execution);
     }
 }

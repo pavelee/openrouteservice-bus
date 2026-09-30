@@ -14,6 +14,9 @@
 package org.heigit.ors.routing.graphhopper.extensions;
 
 import com.graphhopper.GHRequest;
+import com.graphhopper.GHResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.graphhopper.config.Profile;
 import com.graphhopper.routing.*;
 import com.graphhopper.routing.ev.EncodedValueLookup;
@@ -30,10 +33,16 @@ import com.graphhopper.util.TranslationMap;
 import com.graphhopper.util.details.PathDetailsBuilderFactory;
 import org.heigit.ors.routing.graphhopper.extensions.core.CoreRoutingAlgorithmFactory;
 import org.heigit.ors.routing.graphhopper.extensions.core.PrepareCoreLandmarks;
+import org.heigit.ors.routing.graphhopper.extensions.heading.HeadingAwareLocationIndex;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
 public class ORSRouter extends Router {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ORSRouter.class);
+    private static final ObjectMapper DIAGNOSTIC_JSON = new ObjectMapper();
+    private final HeadingAwareLocationIndex headingIndex;
     private final GraphHopperStorage ghStorage;
     private final EncodingManager encodingManager;
     private final Map<String, Profile> profilesByName;
@@ -49,6 +58,25 @@ public class ORSRouter extends Router {
         this.profilesByName = profilesByName;
         this.routerConfig = routerConfig;
         this.weightingFactory = weightingFactory;
+        this.headingIndex = locationIndex instanceof HeadingAwareLocationIndex index ? index : null;
+    }
+
+    @Override
+    public GHResponse route(GHRequest request) {
+        if (headingIndex == null) return super.route(request);
+        try (HeadingAwareLocationIndex.Scope scope = headingIndex.begin(request)) {
+            GHResponse response = super.route(request);
+            String trace = request.getHints().getString("ors.heading_snap_trace", "");
+            if (!trace.isEmpty()) {
+                try {
+                    LOGGER.info("heading_snap_v1 {}", DIAGNOSTIC_JSON.writeValueAsString(Map.of(
+                            "trace", trace, "points", request.getPoints(), "decisions", scope.diagnostics())));
+                } catch (JsonProcessingException exception) {
+                    LOGGER.warn("Cannot serialize heading snap diagnostics", exception);
+                }
+            }
+            return response;
+        }
     }
 
     public void setCoreGraphs(Map<String, RoutingCHGraph> coreGraphs) {

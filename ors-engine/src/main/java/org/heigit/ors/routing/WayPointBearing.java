@@ -15,17 +15,22 @@ package org.heigit.ors.routing;
 
 public class WayPointBearing {
     private final double value;
+    private final double deviation;
 
-    @Deprecated
     public WayPointBearing(double value, double deviation) {
-        this(value);
+        this.value = value;
+        this.deviation = deviation;
     }
 
     public WayPointBearing(double value) {
-        this.value = value;
+        this(value, 100);
     }
 
     public double getValue() {
         return value == -1.0 ? Double.NaN : value;
+    }
+
+    public double getDeviation() {
+        return deviation;
     }
 }

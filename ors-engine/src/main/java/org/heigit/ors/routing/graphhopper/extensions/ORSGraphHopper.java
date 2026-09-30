@@ -48,6 +48,7 @@ import org.heigit.ors.fastisochrones.partitioning.storage.IsochroneNodeStorage;
 import org.heigit.ors.routing.AvoidFeatureFlags;
 import org.heigit.ors.routing.RouteSearchContext;
 import org.heigit.ors.routing.graphhopper.extensions.core.*;
+import org.heigit.ors.routing.graphhopper.extensions.heading.HeadingAwareLocationIndex;
 import org.heigit.ors.routing.graphhopper.extensions.edgefilters.AvoidFeaturesEdgeFilter;
 import org.heigit.ors.routing.graphhopper.extensions.edgefilters.EdgeFilterSequence;
 import org.heigit.ors.routing.graphhopper.extensions.edgefilters.HeavyVehicleEdgeFilter;
@@ -222,6 +223,11 @@ public class ORSGraphHopper extends GraphHopperGtfs {
     protected Router doCreateRouter(GraphHopperStorage ghStorage, LocationIndex locationIndex, Map<String, Profile> profilesByName,
                                     PathDetailsBuilderFactory pathBuilderFactory, TranslationMap trMap, RouterConfig routerConfig,
                                     WeightingFactory weightingFactory, Map<String, RoutingCHGraph> chGraphs, Map<String, LandmarkStorage> landmarks) {
+        if (profileProperties != null && Boolean.TRUE.equals(profileProperties.getService().getHeadingAwareSnap())) {
+            HeadingAwareLocationIndex headingIndex = new HeadingAwareLocationIndex(locationIndex);
+            locationIndex = headingIndex;
+            weightingFactory = headingIndex.captureWeighting(weightingFactory);
+        }
         ORSRouter r = new ORSRouter(ghStorage, locationIndex, profilesByName, pathBuilderFactory, trMap, routerConfig, weightingFactory, chGraphs, landmarks);
         r.setEdgeFilterFactory(new ORSEdgeFilterFactory());
         r.setPathProcessorFactory(pathProcessorFactory);

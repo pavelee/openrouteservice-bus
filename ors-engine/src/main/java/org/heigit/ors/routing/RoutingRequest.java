@@ -451,6 +451,17 @@ public class RoutingRequest extends ServiceRequest {
             else
                 req = new GHRequest(new GHPoint(lat0, lon0), new GHPoint(lat1, lon1), bearings[0].getValue(), bearings[1].getValue());
 
+            if (Boolean.TRUE.equals(routingProfile.getProfileConfiguration().getService().getHeadingAwareSnap())) {
+                if (bearings != null) {
+                    req.setHeadings(java.util.List.of(bearings[0] == null ? Double.NaN : bearings[0].getValue(),
+                            bearings[1] == null ? Double.NaN : bearings[1].getValue()));
+                    req.putHint(org.heigit.ors.routing.graphhopper.extensions.heading.HeadingAwareLocationIndex.DEVIATIONS_HINT,
+                            java.util.List.of(bearings[0] == null ? 100.0 : bearings[0].getDeviation(),
+                                    bearings[1] == null ? 100.0 : bearings[1].getDeviation()));
+                }
+                if (getId() != null) req.putHint("ors.heading_snap_trace", getId());
+            }
+
             req.setEncoderName(searchCntx.getEncoder().toString());
             req.setProfile(searchCntx.profileName());
             req.setAlgorithm(Parameters.Algorithms.ASTAR_BI);
