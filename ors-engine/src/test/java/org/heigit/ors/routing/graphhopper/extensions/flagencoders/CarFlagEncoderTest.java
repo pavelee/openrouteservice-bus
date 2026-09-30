@@ -67,9 +67,16 @@ class CarFlagEncoderTest {
         Weighting carShortest = createWeighting(FlagEncoderNames.CAR_ORS, "shortest");
         Weighting bikeShortest = createWeighting(FlagEncoderNames.BIKE_ORS, "shortest");
 
+        // Isolate access penalties from the fork's existing road-class bias.
+        way.setTag("motor_vehicle", "yes");
+        IntsRef unrestrictedFlags = em.handleWayTags(way, acceptWay, relFlags);
+        double unrestrictedCarWeight = carShortest.calcEdgeWeight(GHUtility.createMockedEdgeIteratorState(WAY_DISTANCE, unrestrictedFlags), false);
+        double unrestrictedBikeWeight = bikeShortest.calcEdgeWeight(GHUtility.createMockedEdgeIteratorState(WAY_DISTANCE, unrestrictedFlags), false);
+        assertTrue(unrestrictedCarWeight >= WAY_DISTANCE);
+        way.setTag("motor_vehicle", "destination");
         edgeFlags = em.handleWayTags(way, acceptWay, relFlags);
-        assertEquals(WAY_DISTANCE * LimitedAccessWeighting.VEHICLE_DESTINATION_FACTOR, carShortest.calcEdgeWeight(GHUtility.createMockedEdgeIteratorState(WAY_DISTANCE, edgeFlags), false), 0.1);
-        assertEquals(WAY_DISTANCE * LimitedAccessWeighting.DEFAULT_DESTINATION_FACTOR, bikeShortest.calcEdgeWeight(GHUtility.createMockedEdgeIteratorState(WAY_DISTANCE, edgeFlags), false), 0.1);
+        assertEquals(unrestrictedCarWeight * LimitedAccessWeighting.VEHICLE_DESTINATION_FACTOR, carShortest.calcEdgeWeight(GHUtility.createMockedEdgeIteratorState(WAY_DISTANCE, edgeFlags), false), 0.1);
+        assertEquals(unrestrictedBikeWeight * LimitedAccessWeighting.DEFAULT_DESTINATION_FACTOR, bikeShortest.calcEdgeWeight(GHUtility.createMockedEdgeIteratorState(WAY_DISTANCE, edgeFlags), false), 0.1);
     }
 
     @Test
