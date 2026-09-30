@@ -104,6 +104,17 @@ class HeadingAwareLocationIndexTest {
     }
 
     @Test
+    void derivedContinueStraightHeadingDoesNotSelectAnotherBranch() {
+        GHRequest request = request(0);
+        request.putHint(HeadingAwareLocationIndex.EXPLICIT_HEADING_HINT, false);
+        try (var scope = index.begin(request)) {
+            initializeWeighting(request);
+            assertEquals(baselineId, index.findClosest(52.0004, 21, EdgeFilter.ALL_EDGES).getClosestEdge().getEdge());
+            assertTrue(scope.diagnostics().isEmpty());
+        }
+    }
+
+    @Test
     void compatibleBaselineDoesNotChange() {
         GHRequest request = request(90);
         try (var scope = index.begin(request)) {

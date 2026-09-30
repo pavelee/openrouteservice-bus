@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 
 public final class HeadingAwareLocationIndex implements LocationIndex {
+    public static final String EXPLICIT_HEADING_HINT = "ors.heading_snap_explicit";
     public static final String DEVIATIONS_HINT = "ors.heading_deviations";
     private final LocationIndex delegate;
     private final ThreadLocal<Context> current = new ThreadLocal<>();
@@ -77,7 +78,8 @@ public final class HeadingAwareLocationIndex implements LocationIndex {
     public Snap findClosest(double lat, double lon, EdgeFilter filter) {
         Snap baseline = delegate.findClosest(lat, lon, filter);
         Context context = current.get();
-        if (context == null || context.weighting == null || !baseline.isValid()) return baseline;
+        if (context == null || context.weighting == null || !baseline.isValid()
+                || !context.request.getHints().getBool(EXPLICIT_HEADING_HINT, true)) return baseline;
         List<GHPoint> points = context.request.getPoints();
         int pointIndex = context.cursor;
         if (pointIndex >= points.size()) return baseline;

@@ -452,6 +452,8 @@ public class RoutingRequest extends ServiceRequest {
                 req = new GHRequest(new GHPoint(lat0, lon0), new GHPoint(lat1, lon1), bearings[0].getValue(), bearings[1].getValue());
 
             if (Boolean.TRUE.equals(routingProfile.getProfileConfiguration().getService().getHeadingAwareSnap())) {
+                req.putHint(org.heigit.ors.routing.graphhopper.extensions.heading.HeadingAwareLocationIndex.EXPLICIT_HEADING_HINT,
+                        searchParams.getBearings() != null);
                 if (bearings != null) {
                     req.setHeadings(java.util.List.of(bearings[0] == null ? Double.NaN : bearings[0].getValue(),
                             bearings[1] == null ? Double.NaN : bearings[1].getValue()));
