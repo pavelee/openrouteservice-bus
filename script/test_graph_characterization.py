@@ -1,10 +1,8 @@
 import hashlib
 import json
-import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
 
 from test_transform_osm import read_tags
 import transform_osm
@@ -16,10 +14,7 @@ class GraphCharacterizationTest(unittest.TestCase):
     def test_zamrozone_laty_daja_identyczny_pbf_w_dwoch_przebiegach(self):
         payload = json.loads((FIXTURES / 'k9-approved-export.json').read_text())
         with tempfile.TemporaryDirectory() as folder:
-            snapshot = Path(folder) / 'export.json'
-            snapshot.write_text(json.dumps(payload))
-            with patch.dict(os.environ, {'CRON_SECRET': '', 'GRAPH_INTERVENTIONS_SNAPSHOT': str(snapshot)}):
-                definitions = transform_osm.load_graph_interventions()
+            definitions = transform_osm._merge_export(payload)
             outputs = []
             for name in ['first', 'second']:
                 file = Path(folder) / f'{name}.osm.pbf'

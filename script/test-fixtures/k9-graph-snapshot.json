@@ -1,0 +1,411 @@
+{
+  "schema": "route-quality-graph-snapshot-v1",
+  "setVersion": "rq-graph-v1:dfa4e211cdb162416a50e98174886bb531cf364f8fab98f9866cb1ac6d8fe0ba",
+  "entryFingerprints": [
+    {
+      "interventionId": 2,
+      "kind": "SYNTHETIC_WAY",
+      "fingerprint": "fb51d9612c38ceac0dfd4c5f89e31b5bf97105a2493e0d73568efb27e0de140a"
+    },
+    {
+      "interventionId": 3,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "3993804197452ee07196355c65e8b0395d4d4cd13414be0d1c4991e8b0bcfaef"
+    },
+    {
+      "interventionId": 4,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "f479c00f8fe6711facff82fcefce36865e53ec859a7b7e29e6c42044ae69dcd6"
+    },
+    {
+      "interventionId": 5,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "f7084e13c1e4fb777fe70d25d18ca6f7f51d14b6982ecc9a8f57bb5d09507320"
+    },
+    {
+      "interventionId": 6,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "51878935ebe7090806d07a0313273db513773678672f34858e49ec81f0d0504f"
+    },
+    {
+      "interventionId": 7,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "b07f8818141a1953595736c1002a4928c6a0b3a69025e7d41d9d399a2ab00ffd"
+    },
+    {
+      "interventionId": 8,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "59001bd06c6051032de2dfa69aa1fca822a3f095e1028933bae884cc8ace5dff"
+    },
+    {
+      "interventionId": 9,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "271a7b73fac588124ffa21692b3bbd32a5252d8b0995a79662c78b2ae3512db1"
+    },
+    {
+      "interventionId": 10,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "13ca10ccb0a764b464d6b633cc392ca3990b131309011c1b9a556b5c2bc4cb7b"
+    },
+    {
+      "interventionId": 11,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "7246e9fc08818658c2538371cb538b41cf1753261f3645c7f1ceb187cf3e3a99"
+    },
+    {
+      "interventionId": 12,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "5cecd2cdd95791a06efb5139d5be592e949a4c4c5d4562d9038c33b28867fcbe"
+    },
+    {
+      "interventionId": 13,
+      "kind": "WAY_BLOCK",
+      "fingerprint": "744ebd5c13a308967fca192f92f38d600df54d8a55056d3e1d07eaaea24e666f"
+    },
+    {
+      "interventionId": 14,
+      "kind": "TAG_OVERRIDE",
+      "fingerprint": "481232050b6886ff4b108fca96db2cd7278fbc5f2b13ef917e974d133e2c6eb9"
+    },
+    {
+      "interventionId": 15,
+      "kind": "TAG_OVERRIDE",
+      "fingerprint": "03c77280b12b10c51b5a5601f580652902bee6d4e9786a1e9a45a2566ac56359"
+    },
+    {
+      "interventionId": 16,
+      "kind": "TAG_OVERRIDE",
+      "fingerprint": "c1549e0b6669166cbb6e91b054b247d3df0ab66fdf2acc598b8d7511bf99641a"
+    },
+    {
+      "interventionId": 17,
+      "kind": "RELATION_SKIP",
+      "fingerprint": "8913d484ecb432c9c839e244bdf234bdad45844238e100d0f9863b2b22c94b14"
+    },
+    {
+      "interventionId": 18,
+      "kind": "RELATION_SKIP",
+      "fingerprint": "8f348c09c13fc962d8d71ecbfa69118d48651462e7a1329a30e306ad4d40937a"
+    },
+    {
+      "interventionId": 19,
+      "kind": "RELATION_SKIP",
+      "fingerprint": "7cda93dc0983f814fd24ab3e42ecdab94cf0ba4687717da089be04886c2ae2b6"
+    },
+    {
+      "interventionId": 20,
+      "kind": "RELATION_SKIP",
+      "fingerprint": "638f2a56ec4eb1b437325cbed2da2e9911b25ccf9230c5edbaea8baa472960f0"
+    },
+    {
+      "interventionId": 21,
+      "kind": "RELATION_SKIP",
+      "fingerprint": "9ec1607d6513f2fcca7a90ef42e5fa71d952699c0f241704ae0f95ad21c052d1"
+    },
+    {
+      "interventionId": 22,
+      "kind": "SYNTHETIC_WAY",
+      "fingerprint": "8e7ab6fa9f9b6b259ab572b25b7e08a501a7f119596a81d0c5a590ff151e50a7"
+    },
+    {
+      "interventionId": 25,
+      "kind": "SYNTHETIC_WAY",
+      "fingerprint": "54c6c8d4cc1f73395d3caf7cc9e38c8745fe5a387cf35c86443669555461f054"
+    },
+    {
+      "interventionId": 63,
+      "kind": "TAG_OVERRIDE",
+      "fingerprint": "763dfe25a339b5b17507f97b95d6919c7888bc09e1b6323fe77a260ef5ae50a8"
+    },
+    {
+      "interventionId": 64,
+      "kind": "TAG_OVERRIDE",
+      "fingerprint": "a28673be1ab3a7dc6a804d3b1abb196e036d10ecd2734fb7fdfba3ca3e5de4ef"
+    },
+    {
+      "interventionId": 65,
+      "kind": "TAG_OVERRIDE",
+      "fingerprint": "649ead5292572a221729cacdeac5df698e9477dd1bf7c07d9861f1af0412faf3"
+    }
+  ],
+  "syntheticWays": [
+    {
+      "interventionId": 2,
+      "graphState": "BAKED",
+      "wayDef": {
+        "id": "9990000001",
+        "nds": [
+          "2309309019",
+          "10615716693"
+        ],
+        "tags": {
+          "psv": "yes",
+          "name": "Zawrotka za peronem Muzeum Narodowe 06 (remont Rondo de Gaulle'a)",
+          "oneway": "yes",
+          "highway": "tertiary"
+        }
+      }
+    },
+    {
+      "interventionId": 22,
+      "graphState": "BAKED",
+      "wayDef": {
+        "id": "9990000002",
+        "nds": [
+          "1908118410",
+          "561287473"
+        ],
+        "tags": {
+          "psv": "yes",
+          "name": "Skret Al. Jerozolimskie -> Bracka (remont Rondo de Gaulle'a)",
+          "oneway": "yes",
+          "highway": "tertiary"
+        }
+      }
+    },
+    {
+      "interventionId": 25,
+      "graphState": "BAKED",
+      "wayDef": {
+        "id": "9990000003",
+        "nds": [
+          "26118675",
+          "2850636479"
+        ],
+        "tags": {
+          "psv": "yes",
+          "name": "Zawrotka Pulawska za Al. Wilanowska (remont torowiska etap II)",
+          "oneway": "yes",
+          "highway": "tertiary"
+        }
+      }
+    }
+  ],
+  "wayBlocks": [
+    {
+      "interventionId": 3,
+      "graphState": "BAKED",
+      "wayIds": [
+        "206528330"
+      ]
+    },
+    {
+      "interventionId": 4,
+      "graphState": "BAKED",
+      "wayIds": [
+        "506254774",
+        "491365793"
+      ]
+    },
+    {
+      "interventionId": 5,
+      "graphState": "BAKED",
+      "wayIds": [
+        "20930779"
+      ]
+    },
+    {
+      "interventionId": 6,
+      "graphState": "BAKED",
+      "wayIds": [
+        "33276900"
+      ]
+    },
+    {
+      "interventionId": 7,
+      "graphState": "BAKED",
+      "wayIds": [
+        "308031464"
+      ]
+    },
+    {
+      "interventionId": 8,
+      "graphState": "BAKED",
+      "wayIds": [
+        "34982097"
+      ]
+    },
+    {
+      "interventionId": 9,
+      "graphState": "BAKED",
+      "wayIds": [
+        "114895531"
+      ]
+    },
+    {
+      "interventionId": 10,
+      "graphState": "BAKED",
+      "wayIds": [
+        "860371908"
+      ]
+    },
+    {
+      "interventionId": 11,
+      "graphState": "BAKED",
+      "wayIds": [
+        "888011097",
+        "174143991",
+        "386852929"
+      ]
+    },
+    {
+      "interventionId": 12,
+      "graphState": "BAKED",
+      "wayIds": [
+        "29571422"
+      ]
+    },
+    {
+      "interventionId": 13,
+      "graphState": "BAKED",
+      "wayIds": [
+        "341151409"
+      ]
+    }
+  ],
+  "tagOverrides": [
+    {
+      "interventionId": 14,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "27569980",
+          "307888832",
+          "30611690"
+        ],
+        "setTags": {
+          "psv": "yes"
+        }
+      }
+    },
+    {
+      "interventionId": 15,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "116934893"
+        ],
+        "setTags": {
+          "oneway": "yes"
+        }
+      }
+    },
+    {
+      "interventionId": 16,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "1453889955"
+        ],
+        "setTags": {
+          "oneway:bus": "no"
+        }
+      }
+    },
+    {
+      "interventionId": 63,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "45399160",
+          "48144100",
+          "48144101",
+          "48144102",
+          "48144104",
+          "48144105",
+          "184744212",
+          "184744213",
+          "184744214",
+          "184744215",
+          "184744216",
+          "184744217",
+          "184744218",
+          "184744219",
+          "184744221",
+          "229805426",
+          "243305875",
+          "243305877",
+          "243305879",
+          "243305880",
+          "243305882",
+          "243305887"
+        ],
+        "setTags": {
+          "highway": "service"
+        }
+      }
+    },
+    {
+      "interventionId": 64,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "184744215",
+          "184744220"
+        ],
+        "nodeIds": [
+          "10821146909",
+          "10821146908"
+        ],
+        "setTags": {
+          "psv": "yes"
+        }
+      }
+    },
+    {
+      "interventionId": 65,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "184744220"
+        ],
+        "setTags": {
+          "oneway": "yes"
+        }
+      }
+    }
+  ],
+  "relationSkips": [
+    {
+      "interventionId": 17,
+      "graphState": "BAKED",
+      "relationIds": [
+        "7783785"
+      ]
+    },
+    {
+      "interventionId": 18,
+      "graphState": "BAKED",
+      "relationIds": [
+        "20253836"
+      ]
+    },
+    {
+      "interventionId": 19,
+      "graphState": "BAKED",
+      "relationIds": [
+        "1963216"
+      ]
+    },
+    {
+      "interventionId": 20,
+      "graphState": "BAKED",
+      "relationIds": [
+        "18888466"
+      ]
+    },
+    {
+      "interventionId": 21,
+      "graphState": "BAKED",
+      "relationIds": [
+        "9166265"
+      ]
+    }
+  ],
+  "busRouteWayIds": [
+    "27569980",
+    "20930779"
+  ],
+  "busRouteWayIdsAvailable": true,
+  "snapshotSha256": "d745db1d83ee4345bebfad61a470b05f929b53a7922ac725e034529f945186ff"
+}

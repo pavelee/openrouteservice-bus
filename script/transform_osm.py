@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
 """
-transform_osm.py — jednoprzebiegowa transformacja mapy OSM dla builda grafu ORS
+transform_osm.py , jednoprzebiegowa transformacja mapy OSM dla builda grafu ORS
 (profil driving-bus). Zastępuje parę convert_osm_to_xml.py + fix_private_roads.py:
-czyta PBF (lub XML) i pisze PBF (lub XML — format po rozszerzeniu pliku), bez
+czyta PBF (lub XML) i pisze PBF (lub XML , format po rozszerzeniu pliku), bez
 wielogigabajtowego XML pośredniego i bez ręcznie pisanego serializera.
 
 Transformacje (kolejność per way):
- 1. WAY_BLOCK      — highway=construction (wycięcie z grafu),
- 2. TAG_OVERRIDE   — setTags: nadpisz istniejący tag / dołóż brakujący
+ 1. WAY_BLOCK      , highway=construction (wycięcie z grafu),
+ 2. TAG_OVERRIDE   , setTags: nadpisz istniejący tag / dołóż brakujący
     (way'e z `wayIds`, a także węzły z `nodeIds`, np. psv=yes na szlabanie),
- 3. strip access   — usunięcie access=private/no (STRIP_ACCESS_TAGS, patrz niżej),
- 4. bus:on_route   — tag dla way'ów z relacji OSM route=bus (EV bus$on_route),
+ 3. strip access   , usunięcie access=private/no (STRIP_ACCESS_TAGS, patrz niżej),
+ 4. bus:on_route   , tag dla way'ów z relacji OSM route=bus (EV bus$on_route),
 oraz:
- 5. RELATION_SKIP  — pominięcie całych relacji (turn-restrictions),
- 6. SYNTHETIC_WAY  — wstrzyknięcie way'ów spoza OSM (kanały nawrotek); wstawiane
+ 5. RELATION_SKIP  , pominięcie całych relacji (turn-restrictions),
+ 6. SYNTHETIC_WAY  , wstrzyknięcie way'ów spoza OSM (kanały nawrotek); wstawiane
     przed pierwszą relacją (zachowuje porządek typów node→way→relation).
 
-ŹRÓDŁO DANYCH (priorytet): rejestr interwencji aplikacji web
-(GET /api/routing-interventions/graph-export, Bearer CRON_SECRET)
- → snapshot ostatniego udanego eksportu (GRAPH_INTERVENTIONS_SNAPSHOT)
- → bootstrapy w tym pliku (awaryjne minimum; rejestr jest źródłem prawdy).
-Po udanym pobraniu z rejestru snapshot jest nadpisywany. Manifest interventionId
-(SYNTHETIC_WAYS_MANIFEST) POST-uje refresh-ors.sh na /graph-export/baked po
-udanym rollout.
+Input: validated route-quality-graph-snapshot-v1 from the registry or a saved
+snapshot. Missing or invalid inputs abort the build. No built-in patch sets.
+SYNTHETIC_WAYS_MANIFEST carries the intervention ids, set version and snapshot
+fingerprint for the existing rollout callback.
 
 STRIP_ACCESS_TAGS (env, domyślnie "true"): historyczne globalne zdjęcie
 access=private/no ze wszystkich way'ów. BusFlagEncoder ma poprawną semantykę
-(private/no zabronione, chyba że bus/psv=yes) — Etap 4 planu uproszczenia to
+(private/no zabronione, chyba że bus/psv=yes) , Etap 4 planu uproszczenia to
 ustawienie "false" + pełny sweep regresyjny; do tego czasu default zachowuje
 dotychczasowe zachowanie mapy.
 
@@ -43,58 +40,10 @@ import sys
 import time
 import urllib.request
 
+from graph_patch_snapshot import file_digest, read_snapshot, validate_snapshot
+
 import osmium
 from osmium.osm import mutable
-
-# ============================ Bootstrapy (awaryjne) ============================
-# Rejestr interwencji jest źródłem prawdy; poniższe minimum chroni graf, gdyby
-# API i snapshot były niedostępne naraz (krytyczne blokady/nawrotki nie mogą
-# zniknąć — aktywne zamknięcia na nich polegają). Uzasadnienia: pola `notes`
-# rekordów w rejestrze (panel "Interwencje").
-
-SYNTHETIC_WAYS_BOOTSTRAP = [
-    {
-        'id': '9990000001',
-        'nds': ['2309309019', '10615716693'],
-        'tags': {
-            'highway': 'tertiary',
-            'oneway': 'yes',
-            'psv': 'yes',
-            'name': 'Zawrotka za peronem Muzeum Narodowe 06 (remont Rondo de Gaulle\'a)',
-        },
-    },
-]
-
-WAY_BLOCKS_BOOTSTRAP = {
-    '20930779',                              # Wiślana (127)
-    '33276900',                              # Zagłoby (187)
-    '308031464',                             # Złota (504)
-    '341151409',                             # Kościuszki (817)
-    '888011097', '174143991', '386852929',   # Wiejska (131)
-    '860371908',                             # Tokarzewskiego-Karaszewicza (128)
-    '29571422',                              # Zawiszaków (115, za ciasna)
-    '34982097',                              # Gimnazjalna (129)
-    '206528330',                             # Rezedowa (402)
-    '114895531',                             # Wyczółki (331)
-    '506254774', '491365793',                # serwisówki-skróty
-}
-
-TAG_OVERRIDES_BOOTSTRAP = {
-    '1453889955': {'oneway:bus': 'no'},                 # 409 / Metro Kondratowicza
-    '27569980': {'psv': 'yes'},                         # Z33 ślimak Dw. Centralny
-    '307888832': {'psv': 'yes'},
-    '30611690': {'psv': 'yes'},
-    '116934893': {'oneway': 'yes'},                     # 106 / Grzybowska
-}
-
-RELATION_SKIPS_BOOTSTRAP = {
-    '1963216',   # zakręt w lewo przy Sejmie (131)
-    '9166265',   # Patriotów→Bysławska (229)
-    '18888466',  # Plac Powstańców Warszawy prosto (107)
-    '7783785',   # Białobrzeska (154)
-    '20253836',  # Stawki w lewo (157)
-}
-
 
 def _merge_export(payload):
     """Payload graph-export → znormalizowane struktury + lista interventionId."""
@@ -135,93 +84,50 @@ def _merge_export(payload):
 
 
 def load_graph_interventions():
-    """Rejestr → snapshot → bootstrap (z logiem, którego źródła użyto).
-
-    Bootstrapy są zawsze bazą (dedup — rejestr/snapshot wygrywa), żeby świeże
-    środowisko bez rejestru wciąż produkowało bezpieczny graf.
-    """
-    data = {
-        'synthetic_ways': {w['id']: w for w in SYNTHETIC_WAYS_BOOTSTRAP},
-        'block_way_ids': set(WAY_BLOCKS_BOOTSTRAP),
-        'tag_overrides': {k: dict(v) for k, v in TAG_OVERRIDES_BOOTSTRAP.items()},
-        'node_tag_overrides': {},
-        'skip_relations': set(RELATION_SKIPS_BOOTSTRAP),
-        'bus_route_way_ids': set(),
-        'intervention_ids': [],
-    }
+    """Use one validated producer snapshot; missing inputs abort the build."""
     snapshot_path = os.environ.get('GRAPH_INTERVENTIONS_SNAPSHOT')
     app_url = os.environ.get('TRASKA_APP_URL', 'http://localhost:3000')
     secret = os.environ.get('CRON_SECRET')
-
     payload = None
-    source = 'bootstrap'
+    source = 'snapshot'
     if secret:
-        # Retry: pojedynczy strzał trafiał w chwilowe restarty aplikacji web
-        # (2026-07-12: refresh w oknie podmiany dev servera pobrał stary snapshot
-        # i wypiekł nieaktualną definicję synthetic way'a — patrz notatka
-        # 503-bracka-tymczasowy-lewoskret-synthetic-way w bazie wiedzy).
         for attempt in range(1, 4):
             try:
                 req = urllib.request.Request(
                     f'{app_url}/api/routing-interventions/graph-export',
                     headers={'Authorization': f'Bearer {secret}'},
                 )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    payload = json.load(resp)
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    validated = validate_snapshot(json.load(response))
+                payload = validated
                 source = 'rejestr'
-                if snapshot_path:
-                    try:
-                        with open(snapshot_path, 'w') as f:
-                            json.dump(payload, f)
-                        print(f'✓ Snapshot eksportu zapisany: {snapshot_path}')
-                    except Exception as e:
-                        print(f'WARN: nie udało się zapisać snapshotu: {e}')
                 break
-            except Exception as e:
-                print(f'WARN: rejestr interwencji niedostępny (próba {attempt}/3: {e})')
+            except Exception as error:
+                print(f'WARN: graph registry unavailable or invalid ({attempt}/3: {error})')
                 if attempt < 3:
                     time.sleep(10)
-    else:
-        print('WARN: brak CRON_SECRET w env — rejestr interwencji pominięty')
-
-    if payload is None and snapshot_path and os.path.isfile(snapshot_path):
-        try:
-            with open(snapshot_path) as f:
-                payload = json.load(f)
-            source = 'snapshot'
-        except Exception as e:
-            print(f'WARN: snapshot nieczytelny ({e})')
-
-    if payload is not None:
-        merged = _merge_export(payload)
-        data['synthetic_ways'].update(merged['synthetic_ways'])
-        data['block_way_ids'] |= merged['block_way_ids']
-        for way_id, tags in merged['tag_overrides'].items():
-            data['tag_overrides'].setdefault(way_id, {}).update(tags)
-        for node_id, tags in merged['node_tag_overrides'].items():
-            data['node_tag_overrides'].setdefault(node_id, {}).update(tags)
-        data['skip_relations'] |= merged['skip_relations']
-        data['bus_route_way_ids'] = merged['bus_route_way_ids']
-        data['intervention_ids'] = merged['intervention_ids']
-
-    print(f"✓ Interwencje grafowe ze źródła: {source} — "
+    if payload is None:
+        if not snapshot_path or not os.path.isfile(snapshot_path):
+            raise ValueError('No validated graph registry or snapshot available')
+        payload = read_snapshot(snapshot_path)
+    if source == 'rejestr' and snapshot_path:
+        temporary = snapshot_path + '.tmp'
+        with open(temporary, 'w') as target:
+            json.dump(payload, target)
+        os.replace(temporary, snapshot_path)
+    data = _merge_export(payload)
+    data['set_version'] = payload['setVersion']
+    data['snapshot_sha256'] = payload['snapshotSha256']
+    print(f"Graph patches from {source}: {data['set_version']}, "
           f"{len(data['synthetic_ways'])} synthetic, {len(data['block_way_ids'])} block, "
           f"{len(data['tag_overrides'])} tag-override, "
-          f"{len(data['node_tag_overrides'])} tag-override węzłów, {len(data['skip_relations'])} rel-skip, "
+          f"{len(data['node_tag_overrides'])} node-override, {len(data['skip_relations'])} rel-skip, "
           f"{len(data['bus_route_way_ids'])} bus_route_way_ids")
-
     manifest_path = os.environ.get('SYNTHETIC_WAYS_MANIFEST')
     if manifest_path:
-        try:
-            # 'source' konsumuje refresh-ors.sh: callback baked wolno wysłać
-            # TYLKO gdy definicje przyszły z żywego rejestru. Wypiek ze snapshotu
-            # /bootstrapu może nieść nieaktualne definicje — BAKED by wtedy kłamał.
-            with open(manifest_path, 'w') as f:
-                json.dump({'ids': data['intervention_ids'], 'source': source}, f)
-            print(f'✓ Manifest baked zapisany: {manifest_path}')
-        except Exception as e:
-            print(f'WARN: nie udało się zapisać manifestu baked: {e}')
-
+        with open(manifest_path, 'w') as target:
+            json.dump({'ids': data['intervention_ids'], 'source': source,
+                       'setVersion': payload['setVersion'], 'snapshotSha256': payload['snapshotSha256']}, target)
     return data
 
 
@@ -367,5 +273,13 @@ if __name__ == '__main__':
         print("STRIP_ACCESS_TAGS=false — access=private/no zostają w mapie "
               "(semantykę dostępu egzekwuje BusFlagEncoder)")
     interventions = load_graph_interventions()
+    raw_sha = file_digest(sys.argv[1])
     ok = transform(sys.argv[1], sys.argv[2], interventions, strip_access=strip)
+    if ok:
+        with open(sys.argv[2] + '.graph-input.json', 'w') as target:
+            json.dump({'schema': 'route-quality-graph-transform-v1',
+                       'setVersion': interventions['set_version'],
+                       'snapshotSha256': interventions['snapshot_sha256'],
+                       'rawPbfSha256': raw_sha, 'pbfSha256': file_digest(sys.argv[2]),
+                       'transformSha256': file_digest(__file__), 'stripAccessTags': strip}, target)
     sys.exit(0 if ok else 1)
