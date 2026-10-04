@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="K9 frozen input">
+<node id="1" version="1" lat="52.230000" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="2" version="1" lat="52.230001" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="26118675" version="1" lat="52.230002" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="561287473" version="1" lat="52.230003" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="1908118410" version="1" lat="52.230004" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="2309309019" version="1" lat="52.230005" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="2850636479" version="1" lat="52.230006" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="10615716693" version="1" lat="52.230007" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="10821146908" version="1" lat="52.230008" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<node id="10821146909" version="1" lat="52.230009" lon="21.001"><tag k="barrier" v="gate"/><tag k="access" v="private"/></node>
+<way id="20930779" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="27569980" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="29571422" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="30611690" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="33276900" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="34982097" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="45399160" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="48144100" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="48144101" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="48144102" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="48144104" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="48144105" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="114895531" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="116934893" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="174143991" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744212" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744213" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744214" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744215" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744216" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744217" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744218" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744219" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744220" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="184744221" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="206528330" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="229805426" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="243305875" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="243305877" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="243305879" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="243305880" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="243305882" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="243305887" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="307888832" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="308031464" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="341151409" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="386852929" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="491365793" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="506254774" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="860371908" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="888011097" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<way id="1453889955" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="access" v="private"/></way>
+<relation id="1963216" version="1"><member type="way" ref="27569980" role="from"/><member type="node" ref="2" role="via"/><member type="way" ref="27569980" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_u_turn"/></relation>
+<relation id="7783785" version="1"><member type="way" ref="27569980" role="from"/><member type="node" ref="2" role="via"/><member type="way" ref="27569980" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_u_turn"/></relation>
+<relation id="9166265" version="1"><member type="way" ref="27569980" role="from"/><member type="node" ref="2" role="via"/><member type="way" ref="27569980" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_u_turn"/></relation>
+<relation id="18888466" version="1"><member type="way" ref="27569980" role="from"/><member type="node" ref="2" role="via"/><member type="way" ref="27569980" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_u_turn"/></relation>
+<relation id="20253836" version="1"><member type="way" ref="27569980" role="from"/><member type="node" ref="2" role="via"/><member type="way" ref="27569980" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_u_turn"/></relation>
+</osm>
