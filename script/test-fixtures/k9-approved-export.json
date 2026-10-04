@@ -1,0 +1,281 @@
+{
+  "syntheticWays": [
+    {
+      "interventionId": 2,
+      "graphState": "BAKED",
+      "wayDef": {
+        "id": "9990000001",
+        "nds": [
+          "2309309019",
+          "10615716693"
+        ],
+        "tags": {
+          "psv": "yes",
+          "name": "Zawrotka za peronem Muzeum Narodowe 06 (remont Rondo de Gaulle'a)",
+          "oneway": "yes",
+          "highway": "tertiary"
+        }
+      }
+    },
+    {
+      "interventionId": 22,
+      "graphState": "BAKED",
+      "wayDef": {
+        "id": "9990000002",
+        "nds": [
+          "1908118410",
+          "561287473"
+        ],
+        "tags": {
+          "psv": "yes",
+          "name": "Skret Al. Jerozolimskie -> Bracka (remont Rondo de Gaulle'a)",
+          "oneway": "yes",
+          "highway": "tertiary"
+        }
+      }
+    },
+    {
+      "interventionId": 25,
+      "graphState": "BAKED",
+      "wayDef": {
+        "id": "9990000003",
+        "nds": [
+          "26118675",
+          "2850636479"
+        ],
+        "tags": {
+          "psv": "yes",
+          "name": "Zawrotka Pulawska za Al. Wilanowska (remont torowiska etap II)",
+          "oneway": "yes",
+          "highway": "tertiary"
+        }
+      }
+    }
+  ],
+  "wayBlocks": [
+    {
+      "interventionId": 3,
+      "graphState": "BAKED",
+      "wayIds": [
+        "206528330"
+      ]
+    },
+    {
+      "interventionId": 4,
+      "graphState": "BAKED",
+      "wayIds": [
+        "506254774",
+        "491365793"
+      ]
+    },
+    {
+      "interventionId": 5,
+      "graphState": "BAKED",
+      "wayIds": [
+        "20930779"
+      ]
+    },
+    {
+      "interventionId": 6,
+      "graphState": "BAKED",
+      "wayIds": [
+        "33276900"
+      ]
+    },
+    {
+      "interventionId": 7,
+      "graphState": "BAKED",
+      "wayIds": [
+        "308031464"
+      ]
+    },
+    {
+      "interventionId": 8,
+      "graphState": "BAKED",
+      "wayIds": [
+        "34982097"
+      ]
+    },
+    {
+      "interventionId": 9,
+      "graphState": "BAKED",
+      "wayIds": [
+        "114895531"
+      ]
+    },
+    {
+      "interventionId": 10,
+      "graphState": "BAKED",
+      "wayIds": [
+        "860371908"
+      ]
+    },
+    {
+      "interventionId": 11,
+      "graphState": "BAKED",
+      "wayIds": [
+        "888011097",
+        "174143991",
+        "386852929"
+      ]
+    },
+    {
+      "interventionId": 12,
+      "graphState": "BAKED",
+      "wayIds": [
+        "29571422"
+      ]
+    },
+    {
+      "interventionId": 13,
+      "graphState": "BAKED",
+      "wayIds": [
+        "341151409"
+      ]
+    }
+  ],
+  "tagOverrides": [
+    {
+      "interventionId": 14,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "27569980",
+          "307888832",
+          "30611690"
+        ],
+        "setTags": {
+          "psv": "yes"
+        }
+      }
+    },
+    {
+      "interventionId": 15,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "116934893"
+        ],
+        "setTags": {
+          "oneway": "yes"
+        }
+      }
+    },
+    {
+      "interventionId": 16,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "1453889955"
+        ],
+        "setTags": {
+          "oneway:bus": "no"
+        }
+      }
+    },
+    {
+      "interventionId": 63,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "45399160",
+          "48144100",
+          "48144101",
+          "48144102",
+          "48144104",
+          "48144105",
+          "184744212",
+          "184744213",
+          "184744214",
+          "184744215",
+          "184744216",
+          "184744217",
+          "184744218",
+          "184744219",
+          "184744221",
+          "229805426",
+          "243305875",
+          "243305877",
+          "243305879",
+          "243305880",
+          "243305882",
+          "243305887"
+        ],
+        "setTags": {
+          "highway": "service"
+        }
+      }
+    },
+    {
+      "interventionId": 64,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "184744215",
+          "184744220"
+        ],
+        "nodeIds": [
+          "10821146909",
+          "10821146908"
+        ],
+        "setTags": {
+          "psv": "yes"
+        }
+      }
+    },
+    {
+      "interventionId": 65,
+      "graphState": "BAKED",
+      "tagOverride": {
+        "wayIds": [
+          "184744220"
+        ],
+        "setTags": {
+          "oneway": "yes"
+        }
+      }
+    }
+  ],
+  "relationSkips": [
+    {
+      "interventionId": 17,
+      "graphState": "BAKED",
+      "relationIds": [
+        "7783785"
+      ]
+    },
+    {
+      "interventionId": 18,
+      "graphState": "BAKED",
+      "relationIds": [
+        "20253836"
+      ]
+    },
+    {
+      "interventionId": 19,
+      "graphState": "BAKED",
+      "relationIds": [
+        "1963216"
+      ]
+    },
+    {
+      "interventionId": 20,
+      "graphState": "BAKED",
+      "relationIds": [
+        "18888466"
+      ]
+    },
+    {
+      "interventionId": 21,
+      "graphState": "BAKED",
+      "relationIds": [
+        "9166265"
+      ]
+    }
+  ],
+  "busRouteWayIds": [
+    "27569980",
+    "20930779"
+  ],
+  "busRouteWayIdsAvailable": true
+}
