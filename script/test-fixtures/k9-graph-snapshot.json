@@ -403,9 +403,9 @@
     }
   ],
   "busRouteWayIds": [
-    "27569980",
-    "20930779"
+    "20930779",
+    "27569980"
   ],
   "busRouteWayIdsAvailable": true,
-  "snapshotSha256": "d745db1d83ee4345bebfad61a470b05f929b53a7922ac725e034529f945186ff"
+  "snapshotSha256": "39167ec513f01990e4aabef8fd86052edb86aee16ea0c1ecad58ef9f19f2e93d"
 }
