@@ -152,4 +152,30 @@ class RouteQualityGraphProducedTest {
             }
         }
     }
+    @Test
+    @DisplayName("ONLY na drodze przechodzącej przez skrzyżowanie wybiera wejście zgodnie z kierunkiem importu")
+    void onlyOnThroughWayCharacterizesIncomingEdge() throws Exception {
+        for (String oneway : new String[]{"no", "yes", "-1"}) {
+            String xml = """
+                    <osm version="0.6">
+                    <node id="1" lat="52.33" lon="21"/><node id="2" lat="52.33" lon="21.005"/>
+                    <node id="3" lat="52.33" lon="21.01"/><node id="4" lat="52.335" lon="21.005"/>
+                    <way id="1"><nd ref="1"/><nd ref="2"/><nd ref="3"/><tag k="highway" v="residential"/><tag k="oneway" v="%s"/></way>
+                    <way id="2"><nd ref="2"/><nd ref="4"/><tag k="highway" v="residential"/></way>
+                    <relation id="1"><member type="way" ref="1" role="from"/><member type="node" ref="2" role="via"/>
+                    <member type="way" ref="2" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="only_right_turn"/></relation>
+                    </osm>
+                    """.formatted(oneway);
+            var file = temporary.resolve("through.osm");
+            Files.writeString(file, xml);
+            try (var graph = read(file)) {
+                var weight = weighting(graph, null, Set.of());
+                assertEquals(oneway.equals("no"), route(graph, weight, 52.33, 21, 52.33, 21.01).found(), oneway);
+                assertFalse(route(graph, weight, 52.33, 21.01, 52.33, 21).found(), oneway);
+                assertEquals(!oneway.equals("-1"), route(graph, weight, 52.33, 21, 52.335, 21.005).found(), oneway);
+                assertEquals(!oneway.equals("yes"), route(graph, weight, 52.33, 21.01, 52.335, 21.005).found(), oneway);
+            }
+        }
+    }
+
 }

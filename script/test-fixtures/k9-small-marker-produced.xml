@@ -41,6 +41,7 @@
   <node id="55" lat="52.285" lon="21.01"/>
   <node id="60" lat="52.29" lon="21"/>
   <node id="62" lat="52.29" lon="21.01"/>
+  <node id="90" lat="52.232" lon="21.006"/>
   <node id="415" lat="52.23" lon="21.006"/>
   <way id="10">
     <nd ref="1"/>
@@ -213,6 +214,11 @@
     <tag k="highway" v="residential"/>
     <tag k="access" v="private"/>
     <tag k="psv" v="yes"/>
+  </way>
+  <way id="90">
+    <nd ref="3"/>
+    <nd ref="90"/>
+    <tag k="building" v="yes"/>
   </way>
   <way id="41">
     <nd ref="40"/>

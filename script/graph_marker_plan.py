@@ -1,4 +1,6 @@
 """Build local topology variants from an explicit approved marker snapshot."""
+import hashlib
+import json
 from collections import defaultdict, Counter
 from itertools import product
 
@@ -25,7 +27,7 @@ def compatible(left, right):
 
 
 class MarkerPlan:
-    def __init__(self, source, snapshot, strip_access=True):
+    def __init__(self, source, snapshot, strip_access=True, encoding=None):
         validate_snapshot(snapshot)
         if snapshot['schema'] != 'route-quality-graph-snapshot-v2':
             raise ValueError('Explicit marker channels are required')
@@ -98,6 +100,7 @@ class MarkerPlan:
         self.ways.update(self.synthetic)
         self.candidates = {node for way in self.ways.values() for node in way['nodes']}
         self.references = Counter()
+        self.reference_ways = {}
         self.incident = defaultdict(set)
 
         class References(osmium.SimpleHandler):
@@ -107,8 +110,9 @@ class MarkerPlan:
 
             def way(self, way):
                 relevant = set(node.ref for node in way.nodes) & plan.candidates
+                if relevant:
+                    plan.reference_ways[way.id] = plan.copy_way(way)
                 for identity in relevant:
-                    plan.references[identity] += 1
                     plan.incident[identity].add(way.id)
                 if any(identity in plan.node_dependencies for identity in relevant):
                     plan.ways.setdefault(way.id, plan.copy_way(way))
@@ -116,6 +120,16 @@ class MarkerPlan:
         References().apply_file(self.source)
         if self.candidates - set(self.nodes):
             raise ValueError('Missing graph marker nodes')
+        self.reference_ways.update(self.synthetic)
+        for identity, way in self.synthetic.items():
+            for node in way['nodes']:
+                self.way_dependencies[identity].update(self.node_dependencies.get(node, ()))
+        self.encoding_results = self.encode(encoding)
+        for identity, way in self.reference_ways.items():
+            if self.encoding_results['reference:' + str(identity)]['accepted']:
+                for node in way['nodes']:
+                    if node in self.candidates:
+                        self.references[node] += 1
         self.max_ids['way'] = max([self.max_ids['way'], *self.synthetic.keys()])
         for way in self.synthetic.values():
             for node in set(way['nodes']):
@@ -150,6 +164,41 @@ class MarkerPlan:
                                  'dependencies': dependencies, 'active': active, 'token': self.tokens[token_key]})
             self.way_variants[identity] = variants
         self.replacement_relations = self.build_relations()
+
+    def encode(self, encoding):
+        if encoding is None:
+            raise ValueError('Graph markers require the actual ORS way encoder')
+        entries = []
+        for identity, way in sorted(self.reference_ways.items()):
+            entries.append({'key': 'reference:' + str(identity), 'id': str(identity), 'nodes': list(map(str, way['nodes'])),
+                            'tags': self.way_tags(identity, (), way['tags'])})
+        for identity, way in sorted(self.ways.items()):
+            for active in states(self.way_dependencies[identity]):
+                entries.append({'key': self.encoding_key(identity, active), 'id': str(identity), 'nodes': list(map(str, way['nodes'])),
+                                'tags': self.way_tags(identity, active, way['tags'])})
+        request = {'schema': 'route-quality-graph-way-encoding-v1', 'flagEncoderOptions': 'turn_costs=true', 'ways': entries}
+        encoded = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+        response = encoding(encoded)
+        if response.get('schema') != 'route-quality-graph-way-encoding-result-v1' or response.get('requestSha256') != hashlib.sha256(encoded).hexdigest():
+            raise ValueError('Graph way encoder response differs from its input')
+        values = response.get('ways', [])
+        results = {}
+        for value in values:
+            key = value.get('key')
+            if key in results or any(type(value.get(field)) is not bool for field in ('accepted', 'forward', 'backward')):
+                raise ValueError('Invalid graph way encoding result')
+            if not value['accepted'] and (value['forward'] or value['backward']):
+                raise ValueError('Rejected graph way cannot have access')
+            results[key] = value
+        if set(results) != {entry['key'] for entry in entries}:
+            raise ValueError('Incomplete graph way encoding result')
+        self.encoding_request_sha256 = response['requestSha256']
+        self.encoder = response['encoder']
+        return results
+
+    @staticmethod
+    def encoding_key(identity, active):
+        return 'variant:' + str(identity) + ':' + ','.join(map(str, active))
 
     @staticmethod
     def copy_way(way):

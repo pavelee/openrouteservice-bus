@@ -17,7 +17,8 @@ FIXTURES = Path(__file__).parent / 'test-fixtures'
 class GraphMarkerPlanTest(unittest.TestCase):
     def plan(self):
         return MarkerPlan(FIXTURES / 'k9-small-marker-map.xml',
-                          json.loads((FIXTURES / 'k9-small-marker-snapshot.json').read_text()), False)
+                          json.loads((FIXTURES / 'k9-small-marker-snapshot.json').read_text()), False,
+                          encoding=lambda request: json.loads((FIXTURES / 'k9-small-marker-encoding.json').read_text()))
 
     def test_kierunek_i_predkosc_maja_cztery_niezalezne_kombinacje(self):
         plan = self.plan()
@@ -108,3 +109,22 @@ class GraphMarkerPlanTest(unittest.TestCase):
 
     def test_restrykcja_via_way_pozostaje_bez_zmian_jak_w_importerze(self):
         self.assertNotIn(69, self.plan().replacement_relations)
+
+    def test_wspoldzielony_obiekt_building_nie_udaje_skrzyzowania_autobusowego(self):
+        plan = self.plan()
+        self.assertFalse(plan.encoding_results['reference:90']['accepted'])
+        self.assertEqual(plan.references[3], 1)
+        self.assertNotEqual(plan.way_variants[10][0]['nodes'][2], plan.way_variants[10][1]['nodes'][2])
+
+    def test_brak_rzeczywistego_enkodera_nie_przechodzi_na_surowe_referencje(self):
+        with self.assertRaisesRegex(ValueError, 'actual ORS'):
+            MarkerPlan(FIXTURES / 'k9-small-marker-map.xml',
+                       json.loads((FIXTURES / 'k9-small-marker-snapshot.json').read_text()), False)
+
+    def test_stare_rozpoznanie_innych_tagow_przerywa_plan(self):
+        result = json.loads((FIXTURES / 'k9-small-marker-encoding.json').read_text())
+        result['requestSha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'differs from its input'):
+            MarkerPlan(FIXTURES / 'k9-small-marker-map.xml',
+                       json.loads((FIXTURES / 'k9-small-marker-snapshot.json').read_text()), False,
+                       encoding=lambda request: result)
