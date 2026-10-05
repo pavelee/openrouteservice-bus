@@ -2,6 +2,7 @@ package org.heigit.ors.routing.graphhopper.extensions.flagencoders;
 
 import com.graphhopper.json.Statement;
 import com.graphhopper.routing.ev.MaxSpeed;
+import com.graphhopper.routing.ev.TurnCost;
 import com.graphhopper.routing.util.parsers.OSMMaxSpeedParser;
 import com.graphhopper.routing.Dijkstra;
 import com.graphhopper.routing.ev.Subnetwork;
@@ -63,7 +64,7 @@ class RouteQualityGraphImportTest {
 
     private Weighting select(Set<Integer> active) {
         CustomModel model = new CustomModel();
-        for (int variant = 1; variant <= 10; variant++)
+        for (int variant = 1; variant <= 12; variant++)
             if (!active.contains(variant))
                 model.addToPriority(Statement.If("bus$quality_variant == " + variant, Statement.Op.MULTIPLY, 0.0));
         CustomProfile profile = new CustomProfile("bus_custom");
@@ -155,6 +156,39 @@ class RouteQualityGraphImportTest {
         assertTrue(route(52.27, 21.00, 21.01, Set.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)));
     }
 
+    @Test
+    @DisplayName("Zakaz tylko tego skrętu dopuszcza każdą aktywną kopię dozwolonej drogi")
+    void onlyTurnAllowsEachActiveCopy() {
+        int from = node(52.29, 21.00), allowed = node(52.29, 21.01), forbidden = node(52.295, 21.005);
+        int referenceFrom = node(52.32, 21.00), referenceAllowed = node(52.32, 21.01), referenceForbidden = node(52.325, 21.005);
+        var ordinaryWeighting = select(Set.of());
+        boolean ordinaryAllowed = new Dijkstra(graph, ordinaryWeighting, TraversalMode.EDGE_BASED)
+                .calcPath(referenceFrom, referenceAllowed).isFound();
+        boolean ordinaryForbidden = new Dijkstra(graph, ordinaryWeighting, TraversalMode.EDGE_BASED)
+                .calcPath(referenceFrom, referenceForbidden).isFound();
+        assertTrue(ordinaryAllowed);
+        assertFalse(ordinaryForbidden);
+        for (int variant : new int[]{11, 12}) {
+            var weighting = select(Set.of(variant));
+            assertEquals(ordinaryAllowed, new Dijkstra(graph, weighting, TraversalMode.EDGE_BASED).calcPath(from, allowed).isFound());
+            assertEquals(ordinaryForbidden, new Dijkstra(graph, weighting, TraversalMode.EDGE_BASED).calcPath(from, forbidden).isFound());
+        }
+        var turnCost = em.getDecimalEncodedValue(TurnCost.key(FlagEncoderNames.BUS));
+        double[] storedUTurnCosts = new double[2];
+        int position = 0;
+        for (double lat : new double[]{52.32, 52.29}) {
+            int start = node(lat, 21.00), via = node(lat, 21.005);
+            var edges = graph.getAllEdges();
+            int fromEdge = -1;
+            while (edges.next()) if ((edges.getBaseNode() == start && edges.getAdjNode() == via)
+                    || (edges.getBaseNode() == via && edges.getAdjNode() == start)) fromEdge = edges.getEdge();
+            assertTrue(fromEdge >= 0);
+            storedUTurnCosts[position++] = graph.getTurnCostStorage().get(turnCost, fromEdge, via, fromEdge);
+        }
+        assertEquals(0.0, storedUTurnCosts[0]);
+        assertEquals(storedUTurnCosts[0], storedUTurnCosts[1]);
+    }
+
     private static final String FIXTURE = """
 <?xml version="1.0" encoding="UTF-8"?><osm version="0.6">
 <node id="1" lat="52.23" lon="21"></node>
@@ -178,6 +212,14 @@ class RouteQualityGraphImportTest {
 <node id="2019" lat="52.26" lon="21.01"/>
 <node id="2020" lat="52.26" lon="21.0"/>
 <node id="2021" lat="52.26" lon="21.01"/>
+<node id="20" lat="52.29" lon="21"/>
+<node id="21" lat="52.29" lon="21.005"/>
+<node id="22" lat="52.29" lon="21.01"/>
+<node id="23" lat="52.295" lon="21.005"/>
+<node id="40" lat="52.32" lon="21"/>
+<node id="41" lat="52.32" lon="21.005"/>
+<node id="42" lat="52.32" lon="21.01"/>
+<node id="43" lat="52.325" lon="21.005"/>
 <way id="101"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="oneway" v="yes"/><tag k="bus:quality_variant" v="1"/></way>
 <way id="102"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/><tag k="oneway" v="-1"/><tag k="bus:quality_variant" v="2"/></way>
 <way id="103"><nd ref="3"/><nd ref="4"/><nd ref="5"/><tag k="highway" v="residential"/><tag k="bus:quality_variant" v="3"/></way>
@@ -194,8 +236,17 @@ class RouteQualityGraphImportTest {
 <way id="2008"><nd ref="2016"/><nd ref="2017"/><tag k="highway" v="residential"/><tag k="oneway" v="-1"/><tag k="maxspeed" v="30"/><tag k="name" v="reference-8"/></way>
 <way id="2009"><nd ref="2018"/><nd ref="2019"/><tag k="highway" v="residential"/><tag k="oneway" v="yes"/><tag k="maxspeed" v="50"/><tag k="name" v="reference-9"/></way>
 <way id="2010"><nd ref="2020"/><nd ref="2021"/><tag k="highway" v="residential"/><tag k="oneway" v="-1"/><tag k="maxspeed" v="50"/><tag k="name" v="reference-10"/></way>
+<way id="120"><nd ref="20"/><nd ref="21"/><tag k="highway" v="residential"/></way>
+<way id="121"><nd ref="21"/><nd ref="22"/><tag k="highway" v="residential"/><tag k="bus:quality_variant" v="11"/></way>
+<way id="122"><nd ref="21"/><nd ref="22"/><tag k="highway" v="residential"/><tag k="bus:quality_variant" v="12"/></way>
+<way id="123"><nd ref="21"/><nd ref="23"/><tag k="highway" v="residential"/></way>
+<way id="140"><nd ref="40"/><nd ref="41"/><tag k="highway" v="residential"/></way>
+<way id="141"><nd ref="41"/><nd ref="42"/><tag k="highway" v="residential"/></way>
+<way id="143"><nd ref="41"/><nd ref="43"/><tag k="highway" v="residential"/></way>
 <relation id="201"><member type="way" ref="105" role="from"/><member type="node" ref="7" role="via"/><member type="way" ref="107" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_left_turn"/></relation>
 <relation id="202"><member type="way" ref="106" role="from"/><member type="node" ref="7" role="via"/><member type="way" ref="107" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_left_turn"/></relation>
+<relation id="301"><member type="way" ref="120" role="from"/><member type="node" ref="21" role="via"/><member type="way" ref="123" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="no_left_turn"/></relation>
+<relation id="401"><member type="way" ref="140" role="from"/><member type="node" ref="41" role="via"/><member type="way" ref="141" role="to"/><tag k="type" v="restriction"/><tag k="restriction" v="only_straight_on"/></relation>
 </osm>
             """;
 }

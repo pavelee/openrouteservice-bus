@@ -43,8 +43,12 @@ class RouteQualityGraphTopologyTest {
         if (duplicate) way += "<way id=\"102\"><nd ref=\"1\"/><nd ref=\"" + (clonePillars ? 12 : 2)
                 + "\"/><nd ref=\"" + (clonePillars ? 13 : 3) + "\"/><nd ref=\"4\"/>"
                 + tags + "<tag k=\"bus:quality_variant\" v=\"2\"/></way>";
-        Path input = temporary.resolve("topology-" + duplicate + "-" + clonePillars + ".osm");
-        Files.writeString(input, "<osm version=\"0.6\">" + nodes + way + "</osm>");
+        return calculate("<osm version=\"0.6\">" + nodes + way + "</osm>", duplicate ? 1 : 0);
+    }
+
+    private Result calculate(String inputXml, int disabled) throws Exception {
+        Path input = temporary.resolve("topology.osm");
+        Files.writeString(input, inputXml);
         EncodingManager em = new EncodingManager.Builder()
                 .add(new ORSDefaultFlagEncoderFactory().createFlagEncoder(FlagEncoderNames.BUS, new PMap())).build();
         try (GraphHopperStorage graph = new GraphBuilder(em).build()) {
@@ -53,7 +57,7 @@ class RouteQualityGraphTopologyTest {
             reader.setWayPointMaxDistance(1);
             reader.readGraph();
             CustomModel model = new CustomModel().setDistanceInfluence(700);
-            if (duplicate) model.addToPriority(Statement.If("bus$quality_variant == 1", Statement.Op.MULTIPLY, 0.0));
+            if (disabled > 0) model.addToPriority(Statement.If("bus$quality_variant == " + disabled, Statement.Op.MULTIPLY, 0.0));
             CustomProfile profile = new CustomProfile("bus_custom");
             profile.setVehicle(FlagEncoderNames.BUS).setTurnCosts(false);
             profile.setCustomModel(model);
@@ -90,4 +94,46 @@ class RouteQualityGraphTopologyTest {
         assertEquals(ordinary.weight(), marked.weight());
         assertEquals(ordinary.edges() * 2, marked.edges());
     }
+    private Result sideRoad(boolean blocked, boolean marked, boolean isolateJunction) throws Exception {
+        String nodes = """
+                <node id="1" lat="52.30" lon="21.00"/>
+                <node id="2" lat="52.30" lon="21.003"/>
+                <node id="3" lat="52.30" lon="21.006"/>
+                <node id="4" lat="52.30" lon="21.01"/>
+                <node id="5" lat="52.301" lon="21.003"/>
+                """;
+        String mainTags = "<tag k=\"highway\" v=\"residential\"/><tag k=\"maxspeed\" v=\"30\"/>";
+        String ways = "<way id=\"101\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd ref=\"4\"/>"
+                + mainTags + (marked && isolateJunction ? "<tag k=\"bus:quality_variant\" v=\"1\"/>" : "") + "</way>";
+        if (marked && isolateJunction) {
+            nodes += """
+                    <node id="32" lat="52.30" lon="21.003"/>
+                    <node id="33" lat="52.30" lon="21.006"/>
+                    """;
+            ways += "<way id=\"102\"><nd ref=\"1\"/><nd ref=\"32\"/><nd ref=\"33\"/><nd ref=\"4\"/>"
+                    + mainTags + "<tag k=\"bus:quality_variant\" v=\"2\"/></way>";
+        }
+        String sideHighway = !marked && blocked ? "construction" : "residential";
+        ways += "<way id=\"103\"><nd ref=\"2\"/><nd ref=\"5\"/><tag k=\"highway\" v=\"" + sideHighway
+                + "\"/>" + (marked ? "<tag k=\"bus:quality_variant\" v=\"1\"/>" : "") + "</way>";
+        if (marked) ways += "<way id=\"104\"><nd ref=\"" + (isolateJunction ? 32 : 2)
+                + "\"/><nd ref=\"5\"/><tag k=\"highway\" v=\"construction\"/>"
+                + "<tag k=\"bus:quality_variant\" v=\"2\"/></way>";
+        return calculate("<osm version=\"0.6\">" + nodes + ways + "</osm>", marked ? (blocked ? 1 : 2) : 0);
+    }
+
+    @Test
+    @DisplayName("Wyłączona droga boczna nie powinna dzielić geometrii drogi głównej")
+    void inactiveSideRoadNeedsJunctionIsolation() throws Exception {
+        assertNotEquals(sideRoad(true, false, false).points(), sideRoad(true, true, false).points());
+        for (boolean blocked : new boolean[]{false, true}) {
+            var ordinary = sideRoad(blocked, false, false);
+            var marked = sideRoad(blocked, true, true);
+            assertEquals(ordinary.points(), marked.points());
+            assertEquals(ordinary.distance(), marked.distance());
+            assertEquals(ordinary.time(), marked.time());
+            assertEquals(ordinary.weight(), marked.weight());
+        }
+    }
+
 }
