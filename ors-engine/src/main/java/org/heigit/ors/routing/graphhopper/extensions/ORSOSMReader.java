@@ -18,6 +18,7 @@ import com.graphhopper.coll.GHLongObjectHashMap;
 import com.graphhopper.reader.ReaderNode;
 import com.graphhopper.reader.ReaderRelation;
 import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerTurnRestrictions;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
 import com.graphhopper.reader.ReaderWay;
 import com.graphhopper.reader.osm.OSMReader;
 import com.graphhopper.storage.GraphHopperStorage;
@@ -39,6 +40,7 @@ public class ORSOSMReader extends OSMReader {
 
     private final GraphProcessContext procCntx;
     private final GraphHopperStorage graphStorage;
+    private final GraphMarkerPolicy markerPolicy;
     private boolean processNodeTags;
     private static final String KEY_COUNTRY = "country";
     private Map<Long, String> countries;
@@ -58,6 +60,7 @@ public class ORSOSMReader extends OSMReader {
     public ORSOSMReader(GraphHopperStorage storage, GraphProcessContext procCntx) {
         super(storage);
         this.graphStorage = storage;
+        this.markerPolicy = GraphMarkerPolicy.fromGraph(storage);
 
         enforce2D();
         this.procCntx = procCntx;
@@ -148,6 +151,10 @@ public class ORSOSMReader extends OSMReader {
 
     @Override
     protected void processWay(ReaderWay way) {
+        if (way.hasTag("bus:quality_variant")) {
+            if (markerPolicy == null) throw new IllegalArgumentException("Graph marker way has no policy");
+            markerPolicy.requireToken(way.getTag("bus:quality_variant"));
+        }
         // As a first step we need to check to see if we should try to split the way
         if (this.detachSidewalksFromRoad) {
             // If we are requesting to split sidewalks, then we need to create multiple ways from a single road

@@ -16,7 +16,9 @@ public final class GraphMarkerTurnRestrictions {
     private GraphMarkerTurnRestrictions() {}
 
     public static boolean apply(GraphHopperStorage graph, OSMReader reader, ReaderRelation relation) {
-        if (!relation.hasTag(TAG) || graph.getProperties().get("route_quality.marker_policy").isEmpty()) return false;
+        if (!relation.hasTag(TAG)) return false;
+        if (graph.getProperties().get(GraphMarkerPolicy.PROPERTY).isEmpty())
+            throw new IllegalArgumentException("Graph marker restriction has no policy");
         if (!relation.hasTag(TAG, "v1") || !relation.hasTag("type", "restriction") || relation.getMembers().size() != 3)
             throw new IllegalArgumentException("Invalid graph marker turn restriction");
         long from = -1, to = -1, via = -1;

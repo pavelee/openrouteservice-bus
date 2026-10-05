@@ -50,6 +50,7 @@ class RouteQualityGraphImportTest {
         graph = new GraphBuilder(em).withTurnCosts(true).build();
         Path input = temporary.resolve("variants.osm");
         Files.writeString(input, FIXTURE);
+        RouteQualityGraphTestFixture.installTestPolicy(graph, 6);
         var reader = new ORSOSMReader(graph, new GraphProcessContext(new ProfileProperties()));
         reader.setFile(input.toFile());
         reader.readGraph();

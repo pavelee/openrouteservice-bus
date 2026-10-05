@@ -8,6 +8,7 @@ import osmium
 from osmium.osm import mutable
 
 from graph_patch_snapshot import digest, validate_snapshot
+from graph_marker_policy import validate_policy
 
 MARKER_TAG = 'bus:quality_variant'
 ONLY_EXCLUDE_TAG = 'bus:quality_only_exclude'
@@ -246,9 +247,12 @@ class MarkerPlan:
 
     def way_tags(self, identity, active, original):
         result = dict(original)
-        if identity in self.synthetic and not any(self.enabled(entry['interventionId'], active)
-                for entry in self.snapshot['syntheticWays'] if int(entry['wayDef']['id']) == identity):
-            result['highway'] = 'construction'
+        if identity in self.synthetic:
+            if not any(self.enabled(entry['interventionId'], active)
+                       for entry in self.snapshot['syntheticWays'] if int(entry['wayDef']['id']) == identity):
+                result['highway'] = 'construction'
+            # Injected ways bypass the legacy global transformations.
+            return result
         blocked = any(self.enabled(entry['interventionId'], active) and str(identity) in entry['wayIds'] for entry in self.snapshot['wayBlocks'])
         if blocked and 'highway' in result:
             result['highway'] = 'construction'
@@ -315,7 +319,7 @@ class MarkerPlan:
                 'qualityInterventionIds': self.snapshot['markerChannels']['qualityInterventionIds'],
                 'rebuildOnlyInterventionIds': sorted(entry['interventionId'] for entry in self.snapshot['relationSkips'] if entry['interventionId'] not in self.official),
                 'variants': [{'token': token, 'interventionIds': list(dependencies), 'activeInterventionIds': list(active)} for (dependencies, active), token in self.tokens.items()]}
-        return {**body, 'policySha256': digest(body)}
+        return validate_policy({**body, 'policySha256': digest(body)})
 
     def write(self, output):
         self.bus_ways = set(self.snapshot['busRouteWayIds'])

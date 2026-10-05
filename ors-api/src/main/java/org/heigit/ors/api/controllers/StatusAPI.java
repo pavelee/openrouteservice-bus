@@ -108,6 +108,8 @@ public class StatusAPI {
                         JSONArray jEVs = new JSONArray(profile_evs.stream().map(EncodedValue::getName).toArray());
                         jProfileProps.put("encoded_values",jEVs);
                     }
+                    var markerPolicy = rp.getGraphProperties().get("route_quality.marker_policy");
+                    if (!markerPolicy.isEmpty()) jProfileProps.put("route_quality_markers", new JSONObject(markerPolicy));
                     jProfiles.put(profile.getProfileName(), jProfileProps);
                 }
 

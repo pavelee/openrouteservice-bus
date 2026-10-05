@@ -58,14 +58,17 @@ public final class RouteQualityGraphWayEncoding {
         return Map.of("schema", "route-quality-graph-way-encoding-result-v1", "encoder", em.toFlagEncodersAsString(), "ways", results, "restrictionTypes", restrictionTypes);
     }
 
+    public static Map<String, Object> response(byte[] input) throws Exception {
+        if (input.length > 32 * 1024 * 1024) throw new IllegalArgumentException("Graph way request exceeds the byte budget");
+        var response = new LinkedHashMap<>(encode(new ObjectMapper().readTree(input)));
+        response.put("requestSha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input)));
+        return response;
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length != 0) throw new IllegalArgumentException("Read a graph way request from stdin");
         byte[] input = System.in.readNBytes(32 * 1024 * 1024 + 1);
-        if (input.length > 32 * 1024 * 1024) throw new IllegalArgumentException("Graph way request exceeds the byte budget");
-        var mapper = new ObjectMapper();
-        var response = new LinkedHashMap<>(encode(mapper.readTree(input)));
-        response.put("requestSha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input)));
-        System.out.write(mapper.writeValueAsBytes(response));
+        System.out.write(new ObjectMapper().writeValueAsBytes(response(input)));
         System.out.write(10);
     }
 }

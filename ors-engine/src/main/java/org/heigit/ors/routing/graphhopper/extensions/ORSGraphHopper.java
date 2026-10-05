@@ -72,6 +72,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.file.Paths;
+import java.nio.file.Path;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -164,6 +166,14 @@ public class ORSGraphHopper extends GraphHopperGtfs {
 
     @Override
     protected OSMReader createOSMReader() {
+        if (getEncodingManager().hasEncodedValue(GraphMarkerPolicy.ENCODED_VALUE)
+                && GraphMarkerPolicy.requiresPolicy(Path.of(getOSMFile()))) {
+            var config = System.getenv("ORS_CONFIG_LOCATION");
+            if (config == null || config.isBlank()) throw new IllegalArgumentException("Marker graph requires explicit ORS_CONFIG_LOCATION");
+            GraphMarkerPolicy.loadForImport(getGraphHopperStorage(), Path.of(getOSMFile()),
+                    profileProperties.getBuild().getEncoderOptionsString(),
+                    Path.of(System.getProperty("java.class.path")), Path.of(config));
+        }
         return new ORSOSMReader(getGraphHopperStorage(), processContext);
     }
 
@@ -174,6 +184,7 @@ public class ORSGraphHopper extends GraphHopperGtfs {
         }
 
         ORSGraphHopper gh = (ORSGraphHopper) super.importOrLoad();
+        GraphMarkerPolicy.validateGraph(gh.getGraphHopperStorage());
         AppInfo.setGraphDate(gh.getGraphHopperStorage().getProperties().get("datareader.import.date"));
         AppInfo.setOsmDate(gh.getGraphHopperStorage().getProperties().get("datareader.data.date"));
 

@@ -52,6 +52,7 @@ class RouteQualityGraphTopologyTest {
         EncodingManager em = new EncodingManager.Builder()
                 .add(new ORSDefaultFlagEncoderFactory().createFlagEncoder(FlagEncoderNames.BUS, new PMap())).build();
         try (GraphHopperStorage graph = new GraphBuilder(em).build()) {
+            if (disabled > 0) RouteQualityGraphTestFixture.installTestPolicy(graph, 1);
             var reader = new ORSOSMReader(graph, new GraphProcessContext(new ProfileProperties()));
             reader.setFile(input.toFile());
             reader.setWayPointMaxDistance(1);
