@@ -28,6 +28,7 @@ import org.heigit.ors.routing.graphhopper.extensions.ORSDefaultFlagEncoderFactor
 import org.heigit.ors.routing.graphhopper.extensions.ORSOSMReader;
 import org.heigit.ors.routing.graphhopper.extensions.ORSWeightingFactory;
 import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -95,6 +96,20 @@ class RouteQualityGraphProducedTest {
         return new ORSWeightingFactory(imported.graph(), imported.em()).createWeighting(profile, new PMap(), false);
     }
 
+    private Weighting nativeSelection(Imported imported, JsonNode policy, Set<Integer> active) {
+        List<Long> disabled = new ArrayList<>();
+        policy.get("qualityInterventionIds").forEach(identity -> {
+            if (!active.contains(identity.asInt())) disabled.add(identity.asLong());
+        });
+        var hints = new PMap();
+        GraphMarkerPolicy.installSelection(imported.graph(), hints,
+                new GraphMarkerSelection("ON", policy.get("policySha256").asText(), disabled));
+        var profile = new CustomProfile("bus_custom");
+        profile.setVehicle(FlagEncoderNames.BUS).setTurnCosts(true);
+        profile.setCustomModel(new CustomModel().setDistanceInfluence(700));
+        return new ORSWeightingFactory(imported.graph(), imported.em()).createWeighting(profile, hints, false);
+    }
+
     private Set<Integer> integers(JsonNode values) {
         Set<Integer> result = new HashSet<>();
         values.forEach(value -> result.add(value.asInt()));
@@ -150,13 +165,16 @@ class RouteQualityGraphProducedTest {
                 try (var ordinary = read(plain)) {
                     var markedWeight = weighting(marked, policy.get("variants"), active);
                     var plainWeight = weighting(ordinary, null, active);
+                    var nativeWeight = nativeSelection(marked, policy, active);
                     assertEquals(properties(ordinary, plainWeight), properties(marked, markedWeight), "edge properties active=" + active);
+                    assertEquals(properties(ordinary, plainWeight), properties(marked, nativeWeight), "native edge properties active=" + active);
                     for (double lat : new double[]{52.23, 52.24, 52.25, 52.26, 52.28, 52.29, 52.33}) {
                         for (boolean reverse : new boolean[]{false, true}) {
                             double from = reverse ? 21.01 : 21.0, to = reverse ? 21.0 : 21.01;
                             var expected = route(ordinary, plainWeight, lat, from, lat, to);
                             var actual = route(marked, markedWeight, lat, from, lat, to);
                             assertEquals(expected, actual, "active=" + active + " lat=" + lat + " reverse=" + reverse);
+                            assertEquals(expected, route(marked, nativeWeight, lat, from, lat, to), "native active=" + active + " lat=" + lat + " reverse=" + reverse);
                             if (lat == 52.23 || lat == 52.26 || lat == 52.28 || lat == 52.29) assertTrue(actual.found());
                             if (lat == 52.33) assertEquals(!reverse || active.contains(17), actual.found());
                             if (lat == 52.25) assertEquals(active.contains(13), actual.found());
@@ -165,17 +183,34 @@ class RouteQualityGraphProducedTest {
                     }
                     assertTrue(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.01).found());
                     assertEquals(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.01), route(marked, markedWeight, 52.28, 21, 52.285, 21.01));
+                    assertEquals(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.01), route(marked, nativeWeight, 52.28, 21, 52.285, 21.01));
                     for (double endLat : new double[]{52.326, 52.338}) {
                         var expected = route(ordinary, plainWeight, 52.33, 21.01, endLat, 21.005);
                         assertEquals(expected, route(marked, markedWeight, 52.33, 21.01, endLat, 21.005));
+                        assertEquals(expected, route(marked, nativeWeight, 52.33, 21.01, endLat, 21.005));
                         if (!active.contains(17)) assertFalse(expected.found());
                     }
                     assertFalse(route(marked, markedWeight, 52.28, 21, 52.285, 21.005).found());
                     assertEquals(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.005), route(marked, markedWeight, 52.28, 21, 52.285, 21.005));
+                    assertEquals(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.005), route(marked, nativeWeight, 52.28, 21, 52.285, 21.005));
                 }
             }
         }
     }
+    @Test
+    @DisplayName("Model przygotowania grafu zachowuje warianty OFF bez domyślnego filtrowania ON")
+    void preparationWithoutSelectionRetainsAllVariants() throws Exception {
+        var policy = mapper.readTree(producedPolicy().toFile());
+        try (var marked = read(producedMap())) {
+            var unfiltered = weighting(marked, null, Set.of());
+            var allQuality = integers(policy.get("qualityInterventionIds"));
+            var on = nativeSelection(marked, policy, allQuality);
+            var off = nativeSelection(marked, policy, Set.of());
+            assertTrue(properties(marked, unfiltered).size() > properties(marked, on).size());
+            assertTrue(properties(marked, unfiltered).size() > properties(marked, off).size());
+        }
+    }
+
     @Test
     @DisplayName("ONLY na drodze przechodzącej przez skrzyżowanie wybiera wejście zgodnie z kierunkiem importu")
     void onlyOnThroughWayCharacterizesIncomingEdge() throws Exception {

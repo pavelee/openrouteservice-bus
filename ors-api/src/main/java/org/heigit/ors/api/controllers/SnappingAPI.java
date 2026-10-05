@@ -15,6 +15,8 @@
 
 package org.heigit.ors.api.controllers;
 
+import jakarta.servlet.http.HttpServletRequest;
+import org.heigit.ors.api.routequality.GraphMarkerHeader;
 import com.fasterxml.jackson.databind.exc.InvalidDefinitionException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
@@ -56,13 +58,15 @@ import org.springframework.web.bind.annotation.*;
 @ApiResponse(responseCode = "501", description = "Indicates that the server does not support the functionality needed to fulfill the request.")
 @ApiResponse(responseCode = "503", description = "The server is currently unavailable due to overload or maintenance.")
 public class SnappingAPI {
+    private final HttpServletRequest servletRequest;
     static final CommonResponseEntityExceptionHandler errorHandler = new CommonResponseEntityExceptionHandler(SnappingErrorCodes.BASE);
 
     private final EndpointsProperties endpointsProperties;
     private final SystemMessageProperties systemMessageProperties;
     private final SnappingService snappingService;
 
-    public SnappingAPI(EndpointsProperties endpointsProperties, SystemMessageProperties systemMessageProperties, SnappingService snappingService) {
+    public SnappingAPI(EndpointsProperties endpointsProperties, SystemMessageProperties systemMessageProperties, SnappingService snappingService, HttpServletRequest servletRequest) {
+        this.servletRequest = servletRequest;
         this.endpointsProperties = endpointsProperties;
         this.systemMessageProperties = systemMessageProperties;
         this.snappingService = snappingService;
@@ -133,6 +137,7 @@ public class SnappingAPI {
         request.setProfileName(profile);
         request.setResponseType(APIEnums.SnappingResponseType.JSON);
 
+        request.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, SnappingErrorCodes.INVALID_PARAMETER_VALUE));
         SnappingResult result = snappingService.generateSnappingFromRequest(request);
 
         return new JsonSnappingResponse(result, request, systemMessageProperties, endpointsProperties);
@@ -163,6 +168,7 @@ public class SnappingAPI {
         request.setProfileName(profile);
         request.setResponseType(APIEnums.SnappingResponseType.GEOJSON);
 
+        request.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, SnappingErrorCodes.INVALID_PARAMETER_VALUE));
         SnappingResult result = snappingService.generateSnappingFromRequest(request);
 
         return new GeoJSONSnappingResponse(result, request, systemMessageProperties, endpointsProperties);

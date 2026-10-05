@@ -1,5 +1,6 @@
 package org.heigit.ors.api.services;
 
+import org.heigit.ors.api.routequality.GraphMarkerHeader;
 import com.graphhopper.util.DistanceCalc;
 import com.graphhopper.util.DistanceCalcEarth;
 import org.heigit.ors.api.APIEnums;
@@ -120,6 +121,8 @@ public class RoutingService extends ApiService {
             RoutingRequest routingRequest = convertRouteRequest(routeApiRequest);
             RoutingProfile profile = parseRoutingProfile(routeApiRequest.getProfileName());
             routingRequest.setRoutingProfile(profile);
+            routingRequest.getSearchParameters().setGraphMarkerSelection(GraphMarkerHeader.validate(
+                    profile.getGraphhopper().getGraphHopperStorage(), routeApiRequest.getGraphMarkerSelection(), RoutingErrorCodes.INVALID_PARAMETER_VALUE));
             validateRouteProfileForRequest(routingRequest);
             if (routeApiRequest.hasCustomModel()) {
                 if (Boolean.FALSE == profile.getProfileProperties().getBuild().getEncoderOptions().getEnableCustomModels()) {
@@ -299,6 +302,7 @@ public class RoutingService extends ApiService {
             params.setCustomModel(routeApiRequest.getCustomModel().toGHCustomModel());
         }
 
+        params.setGraphMarkerSelection(routeApiRequest.getGraphMarkerSelection());
         params.setConsiderTurnRestrictions(false);
 
         routingRequest.setSearchParameters(params);

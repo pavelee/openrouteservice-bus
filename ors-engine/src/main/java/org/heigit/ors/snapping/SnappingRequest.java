@@ -1,5 +1,7 @@
 package org.heigit.ors.snapping;
 
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.routing.util.AccessFilter;
 import com.graphhopper.routing.util.FlagEncoder;
@@ -22,12 +24,17 @@ public class SnappingRequest extends ServiceRequest {
     private final Coordinate[] locations;
     private final double maximumSearchRadius;
     private int maximumLocations;
+    private GraphMarkerSelection graphMarkerSelection;
 
     public SnappingRequest(int profileType, Coordinate[] locations, double maximumSearchRadius) {
         this.profileType = profileType;
         this.locations = locations;
         this.maximumSearchRadius = maximumSearchRadius;
     }
+
+    public GraphMarkerSelection getGraphMarkerSelection() { return graphMarkerSelection; }
+
+    public void setGraphMarkerSelection(GraphMarkerSelection selection) { graphMarkerSelection = selection; }
 
     public String getProfileName() {
         return profileName;
@@ -68,6 +75,7 @@ public class SnappingRequest extends ServiceRequest {
         String localProfileName = ProfileTools.makeProfileName(encoderName, hintsMap.getString("weighting", ""), false);
         GraphHopperStorage ghStorage = gh.getGraphHopperStorage();
         String graphDate = ghStorage.getProperties().get("datareader.import.date");
+        GraphMarkerPolicy.installSelection(ghStorage, hintsMap, graphMarkerSelection);
 
         // TODO: replace usage of matrix search context by snapping-specific class
         MatrixSearchContextBuilder builder = new MatrixSearchContextBuilder(ghStorage, gh.getLocationIndex(), AccessFilter.allEdges(flagEncoder.getAccessEnc()), true);

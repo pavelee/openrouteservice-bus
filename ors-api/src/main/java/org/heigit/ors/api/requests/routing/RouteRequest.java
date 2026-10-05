@@ -15,6 +15,7 @@
 
 package org.heigit.ors.api.requests.routing;
 
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection;
 import com.fasterxml.jackson.annotation.*;
 import io.swagger.v3.oas.annotations.extensions.Extension;
 import io.swagger.v3.oas.annotations.extensions.ExtensionProperty;
@@ -39,6 +40,14 @@ import static org.heigit.ors.api.services.ApiService.convertRouteProfileType;
 @Schema(title = "Directions Service", name = "directionsService", description = "The JSON body request sent to the routing service which defines options and parameters regarding the route to generate.")
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
 public class RouteRequest extends APIRequest implements RouteRequestParameterNames {
+    @JsonIgnore
+    private GraphMarkerSelection graphMarkerSelection;
+
+    @JsonIgnore
+    public GraphMarkerSelection getGraphMarkerSelection() { return graphMarkerSelection; }
+
+    public void setGraphMarkerSelection(GraphMarkerSelection selection) { graphMarkerSelection = selection; }
+
 
     @Schema(name = PARAM_COORDINATES, description = "The waypoints to use for the route as an array of `longitude/latitude` pairs in WGS 84 (EPSG:4326)",
             example = "[[8.681495,49.41461],[8.686507,49.41943],[8.687872,49.420318]]",

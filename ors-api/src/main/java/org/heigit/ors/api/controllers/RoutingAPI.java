@@ -15,6 +15,8 @@
 
 package org.heigit.ors.api.controllers;
 
+import jakarta.servlet.http.HttpServletRequest;
+import org.heigit.ors.api.routequality.GraphMarkerHeader;
 import com.fasterxml.jackson.databind.exc.InvalidDefinitionException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
@@ -58,13 +60,15 @@ import org.springframework.web.bind.annotation.*;
 @ApiResponse(responseCode = "501", description = "Indicates that the server does not support the functionality needed to fulfill the request.")
 @ApiResponse(responseCode = "503", description = "The server is currently unavailable due to overload or maintenance.")
 public class RoutingAPI {
+    private final HttpServletRequest servletRequest;
     static final CommonResponseEntityExceptionHandler errorHandler = new CommonResponseEntityExceptionHandler(RoutingErrorCodes.BASE);
 
     private final EndpointsProperties endpointsProperties;
     private final SystemMessageProperties systemMessageProperties;
     private final RoutingService routingService;
 
-    public RoutingAPI(EndpointsProperties endpointsProperties, SystemMessageProperties systemMessageProperties, RoutingService routingService) {
+    public RoutingAPI(EndpointsProperties endpointsProperties, SystemMessageProperties systemMessageProperties, RoutingService routingService, HttpServletRequest servletRequest) {
+        this.servletRequest = servletRequest;
         this.endpointsProperties = endpointsProperties;
         this.systemMessageProperties = systemMessageProperties;
         this.routingService = routingService;
@@ -114,6 +118,7 @@ public class RoutingAPI {
         request.setProfile(getProfileEnum(profile));
         request.setProfileName(profile);
 
+        request.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, RoutingErrorCodes.INVALID_PARAMETER_VALUE));
         RouteResult[] result = routingService.generateRouteFromRequest(request);
 
         return new GeoJSONRouteResponse(result, request, systemMessageProperties, endpointsProperties);
@@ -156,6 +161,7 @@ public class RoutingAPI {
         request.setProfileName(profile);
         request.setResponseType(APIEnums.RouteResponseType.JSON);
 
+        request.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, RoutingErrorCodes.INVALID_PARAMETER_VALUE));
         RouteResult[] result = routingService.generateRouteFromRequest(request);
 
         return new JSONRouteResponse(result, request, systemMessageProperties, endpointsProperties);
@@ -181,6 +187,7 @@ public class RoutingAPI {
         request.setProfileName(profile);
         request.setResponseType(APIEnums.RouteResponseType.GPX);
 
+        request.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, RoutingErrorCodes.INVALID_PARAMETER_VALUE));
         RouteResult[] result = routingService.generateRouteFromRequest(request);
 
         return new GPXRouteResponse(result, request, systemMessageProperties, endpointsProperties);
@@ -207,6 +214,7 @@ public class RoutingAPI {
         request.setProfileName(profile);
         request.setResponseType(APIEnums.RouteResponseType.GEOJSON);
 
+        request.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, RoutingErrorCodes.INVALID_PARAMETER_VALUE));
         RouteResult[] result = routingService.generateRouteFromRequest(request);
 
         return new GeoJSONRouteResponse(result, request, systemMessageProperties, endpointsProperties);

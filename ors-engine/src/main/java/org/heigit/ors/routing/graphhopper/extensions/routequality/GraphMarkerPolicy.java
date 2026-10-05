@@ -3,6 +3,7 @@ package org.heigit.ors.routing.graphhopper.extensions.routequality;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.graphhopper.storage.GraphHopperStorage;
+import com.graphhopper.util.PMap;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -157,6 +158,35 @@ public final class GraphMarkerPolicy {
                 || !policy.document.path("encoder").asText().equals(graph.getEncodingManager().toFlagEncodersAsString()))
             throw new IllegalArgumentException("Marker policy belongs to another graph encoder");
         return policy;
+    }
+
+    public Set<Integer> selectedTokens(GraphMarkerSelection selection) {
+        if (selection.policySha256() != null && !selection.policySha256().equals(document.path("policySha256").asText()))
+            throw new IllegalArgumentException("Graph selection belongs to another marker policy");
+        var disabled = new HashSet<>(selection.disabledInterventionIds());
+        if (!new HashSet<>(ids(document.get("qualityInterventionIds"))).containsAll(disabled))
+            throw new IllegalArgumentException("Graph selection can disable only declared quality interventions");
+        Set<Integer> selected = new HashSet<>();
+        for (var variant : document.get("variants")) {
+            var active = new HashSet<>(ids(variant.get("activeInterventionIds")));
+            boolean matches = true;
+            for (long identity : ids(variant.get("interventionIds")))
+                if (active.contains(identity) != (selection.mode().equals("ON") && !disabled.contains(identity))) matches = false;
+            if (matches) selected.add(variant.get("token").asInt());
+        }
+        return Set.copyOf(selected);
+    }
+
+    public static void installSelection(GraphHopperStorage graph, PMap hints, GraphMarkerSelection selection) {
+        var policy = fromGraph(graph);
+        if (policy == null) {
+            if (selection != null && selection.policySha256() != null)
+                throw new IllegalArgumentException("Pinned graph selection requires a marker graph");
+            return;
+        }
+        if (selection == null) selection = new GraphMarkerSelection("ON", policy.document.path("policySha256").asText(), List.of());
+        policy.selectedTokens(selection);
+        hints.putObject(GraphMarkerSelection.HINT, selection);
     }
 
     public void requireToken(String token) {

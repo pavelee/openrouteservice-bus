@@ -24,6 +24,9 @@ import org.heigit.ors.routing.graphhopper.extensions.util.MaximumSpeedCalculator
 import org.heigit.ors.routing.graphhopper.extensions.weighting.*;
 import org.heigit.ors.routing.traffic.RoutingTrafficSpeedCalculator;
 
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerWeighting;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -117,6 +120,12 @@ public class ORSWeightingFactory implements WeightingFactory {
             weighting = createTimeDependentAccessWeighting(weighting);
 
         weighting = new LimitedAccessWeighting(weighting, requestHints);
+        GraphMarkerSelection markerSelection = requestHints.getObject(GraphMarkerSelection.HINT, null);
+        if (markerSelection != null) {
+            var policy = GraphMarkerPolicy.fromGraph(ghStorage);
+            if (policy == null) throw new IllegalArgumentException("Graph marker selection has no policy");
+            weighting = new GraphMarkerWeighting(weighting, encodingManager.getIntEncodedValue(GraphMarkerPolicy.ENCODED_VALUE), policy.selectedTokens(markerSelection));
+        }
 
         return weighting;
 

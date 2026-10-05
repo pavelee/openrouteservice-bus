@@ -1,6 +1,8 @@
 package org.heigit.ors.api.requests.snapping;
 
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -12,6 +14,14 @@ import java.util.List;
 @Schema(name = "SnappingRequest", description = "Snapping service endpoint.")
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
 public class SnappingApiRequest extends APIRequest {
+    @JsonIgnore
+    private GraphMarkerSelection graphMarkerSelection;
+
+    @JsonIgnore
+    public GraphMarkerSelection getGraphMarkerSelection() { return graphMarkerSelection; }
+
+    public void setGraphMarkerSelection(GraphMarkerSelection selection) { graphMarkerSelection = selection; }
+
     public static final String PARAM_PROFILE = "profile";
     public static final String PARAM_LOCATIONS = "locations";
     public static final String PARAM_MAXIMUM_SEARCH_RADIUS = "radius";

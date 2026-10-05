@@ -13,6 +13,7 @@
  */
 package org.heigit.ors.routing;
 
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.gtfs.*;
@@ -477,6 +478,8 @@ public class RoutingRequest extends ServiceRequest {
 
             if (props != null && !props.isEmpty())
                 req.getHints().putAll(props);
+            GraphMarkerPolicy.installSelection(
+                    searchCntx.getGraphHopper().getGraphHopperStorage(), req.getHints(), searchParams.getGraphMarkerSelection());
 
             if (searchParams.getCustomModel() != null) {
                 req.setCustomModel(searchParams.getCustomModel());
@@ -595,6 +598,8 @@ public class RoutingRequest extends ServiceRequest {
 
             if (props != null && !props.isEmpty())
                 req.getHints().putAll(props);
+            GraphMarkerPolicy.installSelection(
+                    searchCntx.getGraphHopper().getGraphHopperStorage(), req.getHints(), searchParams.getGraphMarkerSelection());
 
             if (TemporaryUtilShelter.supportWeightingMethod(profileType))
                 ProfileTools.setWeightingMethod(req.getHints(), weightingMethod, profileType, false);

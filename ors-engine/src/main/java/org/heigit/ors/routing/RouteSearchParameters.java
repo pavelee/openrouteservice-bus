@@ -13,6 +13,7 @@
  */
 package org.heigit.ors.routing;
 
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection;
 import com.graphhopper.util.CustomModel;
 import lombok.Getter;
 import lombok.Setter;
@@ -77,6 +78,9 @@ public class RouteSearchParameters {
     @Setter
     @Getter
     private CustomModel customModel;
+    @Setter
+    @Getter
+    private GraphMarkerSelection graphMarkerSelection;
 
     public int getProfileType() {
         return profileType;
@@ -333,7 +337,8 @@ public class RouteSearchParameters {
                 || hasContinueStraight()
                 || (getProfileParameters() != null && getProfileParameters().hasWeightings())
                 || getAlternativeRoutesCount() > 0
-                || customModel != null;
+                || customModel != null
+                || graphMarkerSelection != null;
     }
 
     // time-dependent stuff

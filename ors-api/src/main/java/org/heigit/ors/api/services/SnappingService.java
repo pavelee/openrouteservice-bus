@@ -1,5 +1,6 @@
 package org.heigit.ors.api.services;
 
+import org.heigit.ors.api.routequality.GraphMarkerHeader;
 import org.heigit.ors.api.config.ApiEngineProperties;
 import org.heigit.ors.api.config.EndpointsProperties;
 import org.heigit.ors.api.requests.snapping.SnappingApiRequest;
@@ -32,6 +33,8 @@ public class SnappingService extends ApiService {
             RoutingProfile rp = RoutingProfileManager.getInstance().getRoutingProfile(snappingRequest.getProfileName());
             if (rp == null)
                 throw new InternalServerException(SnappingErrorCodes.UNKNOWN, "Unable to find an appropriate routing profile.");
+            snappingRequest.setGraphMarkerSelection(GraphMarkerHeader.validate(
+                    rp.getGraphhopper().getGraphHopperStorage(), snappingApiRequest.getGraphMarkerSelection(), SnappingErrorCodes.INVALID_PARAMETER_VALUE));
             return snappingRequest.computeResult(rp);
         } catch (PointNotFoundException e) {
             throw new StatusCodeException(StatusCode.NOT_FOUND, SnappingErrorCodes.POINT_NOT_FOUND, e.getMessage());
@@ -54,6 +57,7 @@ public class SnappingService extends ApiService {
                 convertLocations(snappingApiRequest.getLocations()), snappingApiRequest.getMaximumSearchRadius());
         EndpointsProperties.EndpointSnapProperties snapProperties = endpointsProperties.getSnap();
         snappingRequest.setProfileName(snappingApiRequest.getProfileName());
+        snappingRequest.setGraphMarkerSelection(snappingApiRequest.getGraphMarkerSelection());
         snappingRequest.setMaximumLocations(snapProperties.getMaximumLocations());
         if (snappingApiRequest.hasId())
             snappingRequest.setId(snappingApiRequest.getId());
