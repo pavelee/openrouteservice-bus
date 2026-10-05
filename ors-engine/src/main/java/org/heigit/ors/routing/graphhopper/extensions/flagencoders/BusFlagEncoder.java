@@ -19,6 +19,8 @@ import com.graphhopper.reader.osm.conditional.ConditionalOSMSpeedInspector;
 import com.graphhopper.reader.osm.conditional.ConditionalParser;
 import com.graphhopper.reader.osm.conditional.DateRangeParser;
 import com.graphhopper.routing.ev.BooleanEncodedValue;
+import com.graphhopper.routing.ev.IntEncodedValue;
+import com.graphhopper.routing.ev.UnsignedIntEncodedValue;
 import com.graphhopper.routing.ev.DecimalEncodedValue;
 import com.graphhopper.routing.ev.EncodedValue;
 import com.graphhopper.routing.ev.SimpleBooleanEncodedValue;
@@ -106,6 +108,7 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     // Czy krawędź jest częścią ≥1 relacji OSM route=bus — czytane przez custom_model, by
     // wyłączyć karę "osiedlowe skróty" dla legalnych korytarzy bez tagu maxspeed.
     private BooleanEncodedValue busOnRouteEncoder;
+    private IntEncodedValue qualityVariantEncoder;
 
     /**
      * Should be only instantied via EncodingManager
@@ -213,6 +216,8 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         // EncodedValue czytany przez custom_model jako "bus$on_route".
         busOnRouteEncoder = new SimpleBooleanEncodedValue(getKey(prefix, "on_route"), false);
         registerNewEncodedValue.add(busOnRouteEncoder);
+        qualityVariantEncoder = new UnsignedIntEncodedValue(getKey(prefix, "quality_variant"), 31, false);
+        registerNewEncodedValue.add(qualityVariantEncoder);
     }
 
     @Override
@@ -489,6 +494,9 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     @Override
     public IntsRef handleWayTags(IntsRef edgeFlags, ReaderWay way, EncodingManager.Access access, long relationFlags) {
         super.handleWayTags(edgeFlags, way, access, relationFlags);
+        String qualityVariant = way.getTag("bus:quality_variant");
+        if (qualityVariant != null)
+            qualityVariantEncoder.setInt(false, edgeFlags, Integer.parseInt(qualityVariant));
 
         priorityWayEncoder.setDecimal(false, edgeFlags, PriorityCode.getFactor(handlePriority(way)));
         if (isBusPreferredWay(way))
