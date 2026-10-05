@@ -27,6 +27,7 @@ import org.heigit.ors.routing.graphhopper.extensions.GraphProcessContext;
 import org.heigit.ors.routing.graphhopper.extensions.ORSDefaultFlagEncoderFactory;
 import org.heigit.ors.routing.graphhopper.extensions.ORSOSMReader;
 import org.heigit.ors.routing.graphhopper.extensions.ORSWeightingFactory;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,13 +51,28 @@ class RouteQualityGraphProducedTest {
         @Override public void close() { index.close(); graph.close(); }
     }
 
+    private Path producedMap() {
+        return Path.of(System.getProperty("route-quality.produced-map", fixtures.resolve("k9-small-marker-produced.xml").toString()));
+    }
+
+    private Path producedPolicy() {
+        return System.getProperty("route-quality.produced-map") == null ? fixtures.resolve("k9-small-marker-policy.json")
+                : Path.of(producedMap() + ".marker-policy.json");
+    }
+
     private Imported read(Path input) throws Exception {
+        String options = mapper.readTree(producedPolicy().toFile()).get("flagEncoderOptions").asText();
         var em = new EncodingManager.Builder()
-                .add(new ORSDefaultFlagEncoderFactory().createFlagEncoder(FlagEncoderNames.BUS, new PMap().putObject("turn_costs", true)))
+                .add(new ORSDefaultFlagEncoderFactory().createFlagEncoder(FlagEncoderNames.BUS, new PMap(options)))
                 .add(Subnetwork.create("bus_custom")).add(new OSMMaxSpeedParser()).build();
         var graph = new GraphBuilder(em).withTurnCosts(true).build();
-        if (input.getFileName().toString().equals("k9-small-marker-produced.xml"))
-            graph.getProperties().put("route_quality.marker_policy", Files.readString(fixtures.resolve("k9-small-marker-policy.json")));
+        if (input.equals(producedMap())) {
+            if (System.getProperty("route-quality.produced-map") == null)
+                graph.getProperties().put(GraphMarkerPolicy.PROPERTY, Files.readString(producedPolicy()));
+            else
+                GraphMarkerPolicy.loadForImport(graph, input, options, Path.of(System.getProperty("route-quality.encoder-jar")),
+                        Path.of(System.getProperty("route-quality.encoder-config")));
+        }
         var reader = new ORSOSMReader(graph, new GraphProcessContext(new ProfileProperties()));
         reader.setFile(input.toFile());
         reader.setWayPointMaxDistance(1);
@@ -120,11 +136,11 @@ class RouteQualityGraphProducedTest {
     @Test
     @DisplayName("Wszystkie kombinacje wyprodukowanej mapy zachowują trasy i koszt klasycznej transformacji")
     void generatedVariantsMatchClassicTransformations() throws Exception {
-        var policy = mapper.readTree(fixtures.resolve("k9-small-marker-policy.json").toFile());
+        var policy = mapper.readTree(producedPolicy().toFile());
         var frozen = mapper.readTree(fixtures.resolve("k9-small-marker-baselines.json").toFile());
         var references = frozen.get("maps");
         assertEquals(256, references.size());
-        try (var marked = read(fixtures.resolve("k9-small-marker-produced.xml"))) {
+        try (var marked = read(producedMap())) {
             for (var reference : references) {
                 var active = integers(reference.get("activeInterventionIds"));
                 var plain = temporary.resolve("ordinary.osm");

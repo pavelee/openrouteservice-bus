@@ -41,6 +41,17 @@ class MarkerPlan:
         if any(MARKER_TAG in entry['tagOverride']['setTags'] for entry in snapshot['tagOverrides']) or any(MARKER_TAG in entry['wayDef']['tags'] for entry in snapshot['syntheticWays']):
             raise ValueError('Reserved graph marker tag in an intervention')
         self.official = set(snapshot['markerChannels']['officialInterventionIds'])
+        self.blocks_by_way, self.overrides_by_way, self.overrides_by_node, self.synthetics_by_way = [defaultdict(list) for _ in range(4)]
+        for entry in snapshot['wayBlocks']:
+            for identity in entry['wayIds']:
+                self.blocks_by_way[int(identity)].append(entry['interventionId'])
+        for entry in snapshot['tagOverrides']:
+            for identity in entry['tagOverride'].get('wayIds', []):
+                self.overrides_by_way[int(identity)].append(entry)
+            for identity in entry['tagOverride'].get('nodeIds', []):
+                self.overrides_by_node[int(identity)].append(entry)
+        for entry in snapshot['syntheticWays']:
+            self.synthetics_by_way[int(entry['wayDef']['id'])].append(entry['interventionId'])
         self.way_dependencies, self.node_dependencies = defaultdict(set), defaultdict(set)
         self.ways, self.nodes, self.relations = {}, {}, {}
         self.max_ids = {'node': 0, 'way': 0, 'relation': 0}
@@ -240,24 +251,23 @@ class MarkerPlan:
 
     def node_tags(self, identity, active, original):
         result = dict(original)
-        for entry in self.snapshot['tagOverrides']:
-            if self.enabled(entry['interventionId'], active) and str(identity) in entry['tagOverride'].get('nodeIds', []):
+        for entry in self.overrides_by_node.get(identity, ()):
+            if self.enabled(entry['interventionId'], active):
                 result.update(entry['tagOverride']['setTags'])
         return result
 
     def way_tags(self, identity, active, original):
         result = dict(original)
         if identity in self.synthetic:
-            if not any(self.enabled(entry['interventionId'], active)
-                       for entry in self.snapshot['syntheticWays'] if int(entry['wayDef']['id']) == identity):
+            if not any(self.enabled(intervention, active) for intervention in self.synthetics_by_way[identity]):
                 result['highway'] = 'construction'
             # Injected ways bypass the legacy global transformations.
             return result
-        blocked = any(self.enabled(entry['interventionId'], active) and str(identity) in entry['wayIds'] for entry in self.snapshot['wayBlocks'])
+        blocked = any(self.enabled(intervention, active) for intervention in self.blocks_by_way.get(identity, ()))
         if blocked and 'highway' in result:
             result['highway'] = 'construction'
-        for entry in self.snapshot['tagOverrides']:
-            if self.enabled(entry['interventionId'], active) and str(identity) in entry['tagOverride'].get('wayIds', []):
+        for entry in self.overrides_by_way.get(identity, ()):
+            if self.enabled(entry['interventionId'], active):
                 result.update(entry['tagOverride']['setTags'])
         if self.strip_access and result.get('access') in ('private', 'no'):
             del result['access']
@@ -331,18 +341,29 @@ class MarkerPlan:
                 if node.id in plan.node_variants:
                     for active, identity in plan.node_variants[node.id].items():
                         writer.add_node(node.replace(id=identity, tags=plan.node_tags(node.id, active, dict(node.tags))))
-                else:
+                elif node.id in plan.overrides_by_node:
                     writer.add_node(node.replace(tags=plan.node_tags(node.id, (), dict(node.tags))))
+                else:
+                    writer.add_node(node)
 
-            def way(self, way):
+            def extra(self):
                 if not self.extra_nodes:
                     for identity, node in sorted(plan.nodes.items()):
                         if identity > self.raw_node_max:
                             writer.add_node(mutable.Node(id=identity, location=node['location'], tags=plan.node_tags(node['originalId'], node.get('active', ()), node['tags'])))
                     self.extra_nodes = True
-                self.emit_way(plan.copy_way(way))
+
+            def way(self, way):
+                self.extra()
+                if way.id not in plan.way_variants:
+                    original = dict(way.tags)
+                    tags = plan.way_tags(way.id, (), original)
+                    writer.add_way(way.replace(tags=tags) if tags != original else way)
+                else:
+                    self.emit_way(plan.copy_way(way))
 
             def emit_way(self, way):
+                self.extra()
                 for variant in plan.variants(way['id']):
                     tags = plan.way_tags(way['id'], variant['active'], way['tags'])
                     if 'token' in variant:

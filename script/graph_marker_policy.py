@@ -1,7 +1,14 @@
 """Validate the graph's frozen token selection contract."""
 import re
+from pathlib import Path
 
-from graph_patch_snapshot import digest
+from graph_patch_snapshot import digest, file_digest
+
+BUNDLE_FILES = ('graph_marker_transform.py', 'graph_marker_plan.py', 'graph_marker_policy.py', 'graph_patch_snapshot.py')
+
+
+def bundle_digest(directory):
+    return digest({name: file_digest(Path(directory) / name) for name in BUNDLE_FILES})
 
 
 def marker_ids(values):

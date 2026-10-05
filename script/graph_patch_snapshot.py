@@ -126,10 +126,16 @@ def file_digest(path):
 
 
 def validate_receipt(receipt):
-    if receipt.get('schema') != 'route-quality-graph-transform-v1' or not re.fullmatch(
+    if receipt.get('schema') not in ('route-quality-graph-transform-v1', 'route-quality-graph-transform-v2') or not re.fullmatch(
             'rq-graph-v[12]:[a-f0-9]{64}', str(receipt.get('setVersion', ''))):
         raise ValueError('A graph transformation receipt is required')
-    for key in ('snapshotSha256', 'rawPbfSha256', 'pbfSha256', 'transformSha256'):
+    marker = receipt['schema'] == 'route-quality-graph-transform-v2'
+    if receipt['setVersion'].startswith('rq-graph-v2:') != marker:
+        raise ValueError('Graph receipt mode differs from the snapshot version')
+    fields = ('snapshotSha256', 'rawPbfSha256', 'pbfSha256', 'transformSha256')
+    if marker:
+        fields += ('transformBundleSha256', 'policySha256', 'policyFileSha256', 'encoderJarSha256', 'configSha256')
+    for key in fields:
         if not re.fullmatch('[a-f0-9]{64}', str(receipt.get(key, ''))):
             raise ValueError('Invalid graph transformation fingerprint')
     if type(receipt.get('stripAccessTags')) is not bool:
@@ -137,7 +143,7 @@ def validate_receipt(receipt):
     return receipt
 
 
-def validate_build_inputs(snapshot_path, receipt_path, pbf_path, transform_path):
+def validate_build_inputs(snapshot_path, receipt_path, pbf_path, transform_path, encoder_jar=None, config=None):
     snapshot = read_snapshot(snapshot_path)
     with open(receipt_path) as source:
         receipt = validate_receipt(json.load(source))
@@ -145,4 +151,22 @@ def validate_build_inputs(snapshot_path, receipt_path, pbf_path, transform_path)
         raise ValueError('Graph input receipt belongs to another snapshot')
     if receipt['pbfSha256'] != file_digest(pbf_path) or receipt['transformSha256'] != file_digest(transform_path):
         raise ValueError('Graph map or transformation changed after receipt')
+    if receipt['schema'] == 'route-quality-graph-transform-v2':
+        from pathlib import Path
+        from graph_marker_policy import validate_policy, bundle_digest
+        if encoder_jar is None or config is None:
+            raise ValueError('Marker build requires the bound encoder JAR and configuration')
+        policy_file = str(pbf_path) + '.marker-policy.json'
+        with open(policy_file) as source:
+            policy = validate_policy(json.load(source))
+        if any(policy[key] != receipt[key] for key in ('setVersion', 'snapshotSha256', 'policySha256')):
+            raise ValueError('Marker policy differs from its receipt')
+        if any(policy[key] != snapshot['markerChannels'][key] for key in ('officialInterventionIds', 'qualityInterventionIds')):
+            raise ValueError('Marker channels differ from the approved snapshot')
+        official = set(policy['officialInterventionIds'])
+        if policy['rebuildOnlyInterventionIds'] != sorted(entry['interventionId'] for entry in snapshot['relationSkips'] if entry['interventionId'] not in official):
+            raise ValueError('Marker rebuild debt differs from the snapshot')
+        if (receipt['policyFileSha256'] != file_digest(policy_file) or receipt['encoderJarSha256'] != file_digest(encoder_jar)
+                or receipt['configSha256'] != file_digest(config) or receipt['transformBundleSha256'] != bundle_digest(Path(transform_path).parent)):
+            raise ValueError('Marker policy, encoder, configuration or transformation bundle changed')
     return receipt
