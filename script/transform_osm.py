@@ -110,6 +110,8 @@ def load_graph_interventions():
         if not snapshot_path or not os.path.isfile(snapshot_path):
             raise ValueError('No validated graph registry or snapshot available')
         payload = read_snapshot(snapshot_path)
+    if payload['schema'] != 'route-quality-graph-snapshot-v1':
+        raise ValueError('Marker snapshot requires marker transformation')
     if source == 'rejestr' and snapshot_path:
         temporary = snapshot_path + '.tmp'
         with open(temporary, 'w') as target:

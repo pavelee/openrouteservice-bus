@@ -36,7 +36,8 @@ def normalized_ids(values):
 
 
 def validate_snapshot(payload):
-    if not isinstance(payload, dict) or payload.get('schema') != 'route-quality-graph-snapshot-v1':
+    if not isinstance(payload, dict) or payload.get('schema') not in (
+            'route-quality-graph-snapshot-v1', 'route-quality-graph-snapshot-v2'):
         raise ValueError('A versioned graph snapshot is required')
     body = {key: value for key, value in payload.items() if key != 'snapshotSha256'}
     if payload.get('snapshotSha256') != digest(body):
@@ -87,7 +88,20 @@ def validate_snapshot(payload):
                 definition = {'wayIds': normalized_ids(ways), 'nodeIds': normalized_ids(nodes), 'setTags': override['setTags']}
             fingerprints.append({'interventionId': identity, 'kind': kind, 'fingerprint': digest({'kind': kind, 'definition': definition})})
     fingerprints.sort(key=lambda entry: entry['interventionId'])
-    if payload.get('entryFingerprints') != fingerprints or payload.get('setVersion') != 'rq-graph-v1:' + digest(fingerprints):
+    version = 'rq-graph-v1:' + digest(fingerprints)
+    if payload['schema'] == 'route-quality-graph-snapshot-v2':
+        channels = payload.get('markerChannels')
+        if not isinstance(channels, dict) or set(channels) != {'officialInterventionIds', 'qualityInterventionIds'}:
+            raise ValueError('Explicit graph marker channels are required')
+        ids = []
+        for channel in channels.values():
+            if not isinstance(channel, list) or any(type(identity) is not int for identity in channel) or channel != sorted(set(channel)):
+                raise ValueError('Invalid graph marker channel')
+            ids.extend(channel)
+        if len(ids) != len(seen) or set(ids) != seen:
+            raise ValueError('Graph marker channels must partition the approved set')
+        version = 'rq-graph-v2:' + digest({'entryFingerprints': fingerprints, 'markerChannels': channels})
+    if payload.get('entryFingerprints') != fingerprints or payload.get('setVersion') != version:
         raise ValueError('Graph set differs from its version')
     identifiers(payload.get('busRouteWayIds'), True)
     if type(payload.get('busRouteWayIdsAvailable')) is not bool:
@@ -113,7 +127,7 @@ def file_digest(path):
 
 def validate_receipt(receipt):
     if receipt.get('schema') != 'route-quality-graph-transform-v1' or not re.fullmatch(
-            'rq-graph-v1:[a-f0-9]{64}', str(receipt.get('setVersion', ''))):
+            'rq-graph-v[12]:[a-f0-9]{64}', str(receipt.get('setVersion', ''))):
         raise ValueError('A graph transformation receipt is required')
     for key in ('snapshotSha256', 'rawPbfSha256', 'pbfSha256', 'transformSha256'):
         if not re.fullmatch('[a-f0-9]{64}', str(receipt.get(key, ''))):

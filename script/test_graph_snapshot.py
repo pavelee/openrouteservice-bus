@@ -5,13 +5,57 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from graph_patch_snapshot import validate_snapshot
+from graph_patch_snapshot import validate_snapshot, digest
 import transform_osm
 
 FIXTURE = Path(__file__).parent / 'test-fixtures/k9-graph-snapshot.json'
 
 
 class GraphSnapshotTest(unittest.TestCase):
+    def marker_snapshot(self):
+        return json.loads((FIXTURE.parent / 'k9-marker-snapshot.json').read_text())
+
+    def test_migawka_markerow_z_typescript_ma_jawne_rozlaczne_kanaly(self):
+        snapshot = self.marker_snapshot()
+        self.assertEqual(validate_snapshot(snapshot), snapshot)
+        self.assertEqual(snapshot['markerChannels']['officialInterventionIds'], [3])
+        self.assertEqual(len(snapshot['markerChannels']['qualityInterventionIds']), 24)
+
+    def test_sama_zmiana_kanalu_wymaga_nowej_wersji_zestawu(self):
+        snapshot = self.marker_snapshot()
+        snapshot['markerChannels']['qualityInterventionIds'].append(3)
+        snapshot['markerChannels']['qualityInterventionIds'].sort()
+        snapshot['markerChannels']['officialInterventionIds'] = []
+        del snapshot['snapshotSha256']
+        snapshot['snapshotSha256'] = digest(snapshot)
+        with self.assertRaisesRegex(ValueError, 'set differs'):
+            validate_snapshot(snapshot)
+
+    def test_lata_nie_moze_zniknac_z_obu_kanalow(self):
+        snapshot = self.marker_snapshot()
+        snapshot['markerChannels']['officialInterventionIds'] = []
+        del snapshot['snapshotSha256']
+        snapshot['snapshotSha256'] = digest(snapshot)
+        with self.assertRaisesRegex(ValueError, 'partition'):
+            validate_snapshot(snapshot)
+
+    def test_lata_nie_moze_nalezec_do_dwoch_kanalow(self):
+        snapshot = self.marker_snapshot()
+        snapshot['markerChannels']['qualityInterventionIds'].append(3)
+        snapshot['markerChannels']['qualityInterventionIds'].sort()
+        del snapshot['snapshotSha256']
+        snapshot['snapshotSha256'] = digest(snapshot)
+        with self.assertRaisesRegex(ValueError, 'partition'):
+            validate_snapshot(snapshot)
+
+    def test_klasyczny_transformator_nie_udaje_markerow_dla_v2(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / 'snapshot.json'
+            file.write_text(json.dumps(self.marker_snapshot()))
+            with patch.dict(os.environ, {'CRON_SECRET': '', 'GRAPH_INTERVENTIONS_SNAPSHOT': str(file)}):
+                with self.assertRaisesRegex(ValueError, 'requires marker'):
+                    transform_osm.load_graph_interventions()
+
     def test_migawka_producenta_ma_poprawne_wersje_i_odciski(self):
         snapshot = json.loads(FIXTURE.read_text())
         self.assertEqual(validate_snapshot(snapshot), snapshot)
