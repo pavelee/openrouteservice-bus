@@ -3,6 +3,7 @@ package org.heigit.ors.routing.graphhopper.extensions.flagencoders;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.graphhopper.reader.ReaderWay;
+import com.graphhopper.reader.OSMTurnRelation;
 import com.graphhopper.routing.util.EncodingManager;
 import com.graphhopper.util.PMap;
 import org.heigit.ors.routing.graphhopper.extensions.ORSDefaultFlagEncoderFactory;
@@ -46,7 +47,15 @@ public final class RouteQualityGraphWayEncoding {
             result.put("backward", access.getBool(true, flags));
             results.add(result);
         }
-        return Map.of("schema", "route-quality-graph-way-encoding-result-v1", "encoder", em.toFlagEncodersAsString(), "ways", results);
+        var restrictionTypes = new LinkedHashMap<String, String>();
+        if (request.has("restrictions")) {
+            if (!request.get("restrictions").isArray()) throw new IllegalArgumentException("Invalid graph restrictions");
+            for (var value : request.get("restrictions")) {
+                if (!value.isTextual()) throw new IllegalArgumentException("Invalid graph restriction value");
+                restrictionTypes.put(value.asText(), OSMTurnRelation.Type.getRestrictionType(value.asText()).name());
+            }
+        }
+        return Map.of("schema", "route-quality-graph-way-encoding-result-v1", "encoder", em.toFlagEncodersAsString(), "ways", results, "restrictionTypes", restrictionTypes);
     }
 
     public static void main(String[] args) throws Exception {

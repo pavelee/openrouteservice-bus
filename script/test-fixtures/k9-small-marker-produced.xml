@@ -46,18 +46,30 @@
   <node id="60" lat="52.29" lon="21"/>
   <node id="62" lat="52.29" lon="21.01"/>
   <node id="90" lat="52.232" lon="21.006"/>
-  <node id="417" lat="52.23" lon="21.006"/>
-  <node id="418" lat="52.23" lon="21.008"/>
-  <node id="419" lat="52.23" lon="21.003"/>
-  <node id="420" lat="52.23" lon="21.006"/>
-  <node id="421" lat="52.23" lon="21.003"/>
-  <node id="422" lat="52.23" lon="21.006"/>
-  <node id="423" lat="52.23" lon="21.008"/>
-  <node id="424" lat="52.25" lon="21.005">
+  <node id="70" lat="52.33" lon="21"/>
+  <node id="71" lat="52.33" lon="21.005"/>
+  <node id="417" lat="52.33" lon="21.005"/>
+  <node id="72" lat="52.33" lon="21.01"/>
+  <node id="74" lat="52.335" lon="21.007"/>
+  <node id="418" lat="52.335" lon="21.007"/>
+  <node id="75" lat="52.326" lon="21.005"/>
+  <node id="419" lat="52.326" lon="21.005"/>
+  <node id="76" lat="52.338" lon="21.005"/>
+  <node id="420" lat="52.338" lon="21.005"/>
+  <node id="421" lat="52.23" lon="21.006"/>
+  <node id="422" lat="52.23" lon="21.008"/>
+  <node id="423" lat="52.23" lon="21.003"/>
+  <node id="424" lat="52.23" lon="21.006"/>
+  <node id="425" lat="52.23" lon="21.003"/>
+  <node id="426" lat="52.23" lon="21.006"/>
+  <node id="427" lat="52.23" lon="21.008"/>
+  <node id="428" lat="52.25" lon="21.005">
     <tag k="barrier" v="lift_gate"/>
     <tag k="access" v="private"/>
     <tag k="psv" v="yes"/>
   </node>
+  <node id="429" lat="52.33" lon="21.005"/>
+  <node id="430" lat="52.33" lon="21.005"/>
   <way id="10">
     <nd ref="1"/>
     <nd ref="2"/>
@@ -71,8 +83,8 @@
   <way id="403">
     <nd ref="1"/>
     <nd ref="2"/>
-    <nd ref="417"/>
-    <nd ref="418"/>
+    <nd ref="421"/>
+    <nd ref="422"/>
     <nd ref="4"/>
     <tag k="highway" v="residential"/>
     <tag k="bus:on_route" v="yes"/>
@@ -80,8 +92,8 @@
   </way>
   <way id="404">
     <nd ref="1"/>
-    <nd ref="419"/>
-    <nd ref="420"/>
+    <nd ref="423"/>
+    <nd ref="424"/>
     <nd ref="35"/>
     <nd ref="4"/>
     <tag k="highway" v="residential"/>
@@ -90,9 +102,9 @@
   </way>
   <way id="405">
     <nd ref="1"/>
-    <nd ref="421"/>
-    <nd ref="422"/>
-    <nd ref="423"/>
+    <nd ref="425"/>
+    <nd ref="426"/>
+    <nd ref="427"/>
     <nd ref="4"/>
     <tag k="highway" v="residential"/>
     <tag k="bus:on_route" v="yes"/>
@@ -167,7 +179,7 @@
   </way>
   <way id="411">
     <nd ref="31"/>
-    <nd ref="424"/>
+    <nd ref="428"/>
     <nd ref="33"/>
     <tag k="highway" v="residential"/>
     <tag k="bus:quality_variant" v="14"/>
@@ -178,7 +190,7 @@
     <tag k="highway" v="residential"/>
     <tag k="bus:quality_variant" v="15"/>
   </way>
-  <way id="418">
+  <way id="421">
     <nd ref="413"/>
     <nd ref="401"/>
     <tag k="highway" v="residential"/>
@@ -190,7 +202,7 @@
     <tag k="highway" v="residential"/>
     <tag k="bus:quality_variant" v="15"/>
   </way>
-  <way id="419">
+  <way id="422">
     <nd ref="401"/>
     <nd ref="414"/>
     <tag k="highway" v="residential"/>
@@ -269,6 +281,46 @@
     <nd ref="90"/>
     <tag k="building" v="yes"/>
   </way>
+  <way id="70">
+    <nd ref="70"/>
+    <nd ref="71"/>
+    <nd ref="72"/>
+    <tag k="highway" v="residential"/>
+    <tag k="bus:quality_variant" v="19"/>
+  </way>
+  <way id="418">
+    <nd ref="70"/>
+    <nd ref="429"/>
+    <nd ref="72"/>
+    <tag k="highway" v="residential"/>
+    <tag k="bus:quality_variant" v="20"/>
+  </way>
+  <way id="73">
+    <nd ref="71"/>
+    <nd ref="74"/>
+    <tag k="highway" v="residential"/>
+    <tag k="bus:quality_variant" v="19"/>
+  </way>
+  <way id="419">
+    <nd ref="417"/>
+    <nd ref="418"/>
+    <tag k="highway" v="construction"/>
+    <tag k="bus:quality_variant" v="20"/>
+  </way>
+  <way id="75">
+    <nd ref="75"/>
+    <nd ref="71"/>
+    <nd ref="76"/>
+    <tag k="highway" v="residential"/>
+    <tag k="bus:quality_variant" v="19"/>
+  </way>
+  <way id="420">
+    <nd ref="419"/>
+    <nd ref="430"/>
+    <nd ref="420"/>
+    <tag k="highway" v="construction"/>
+    <tag k="bus:quality_variant" v="20"/>
+  </way>
   <way id="41">
     <nd ref="40"/>
     <nd ref="42"/>
@@ -283,19 +335,69 @@
     <tag k="psv" v="yes"/>
     <tag k="bus:quality_variant" v="16"/>
   </way>
-  <relation id="70">
+  <relation id="85">
+    <member type="way" ref="70" role="from"/>
+    <member type="node" ref="71" role="via"/>
+    <member type="way" ref="70" role="to"/>
+    <tag k="type" v="restriction"/>
+    <tag k="restriction" v="only_right_turn"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
+  </relation>
+  <relation id="86">
+    <member type="way" ref="418" role="from"/>
+    <member type="node" ref="429" role="via"/>
+    <member type="way" ref="418" role="to"/>
+    <tag k="type" v="restriction"/>
+    <tag k="restriction" v="only_right_turn"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
+  </relation>
+  <relation id="87">
+    <member type="way" ref="70" role="from"/>
+    <member type="node" ref="71" role="via"/>
+    <member type="way" ref="75" role="to"/>
+    <tag k="type" v="restriction"/>
+    <tag k="restriction" v="only_right_turn"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
+  </relation>
+  <relation id="88">
+    <member type="way" ref="418" role="from"/>
+    <member type="node" ref="429" role="via"/>
+    <member type="way" ref="420" role="to"/>
+    <tag k="type" v="restriction"/>
+    <tag k="restriction" v="only_right_turn"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
+  </relation>
+  <relation id="81">
+    <member type="way" ref="50" role="from"/>
+    <member type="node" ref="51" role="via"/>
+    <member type="way" ref="50" role="to"/>
+    <tag k="type" v="restriction"/>
+    <tag k="restriction" v="only_straight_on"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
+  </relation>
+  <relation id="82">
+    <member type="way" ref="413" role="from"/>
+    <member type="node" ref="415" role="via"/>
+    <member type="way" ref="413" role="to"/>
+    <tag k="type" v="restriction"/>
+    <tag k="restriction" v="only_straight_on"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
+  </relation>
+  <relation id="83">
     <member type="way" ref="50" role="from"/>
     <member type="node" ref="51" role="via"/>
     <member type="way" ref="52" role="to"/>
     <tag k="type" v="restriction"/>
-    <tag k="restriction" v="no_straight_on"/>
+    <tag k="restriction" v="only_straight_on"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
   </relation>
-  <relation id="71">
+  <relation id="84">
     <member type="way" ref="413" role="from"/>
     <member type="node" ref="415" role="via"/>
     <member type="way" ref="415" role="to"/>
     <tag k="type" v="restriction"/>
-    <tag k="restriction" v="no_straight_on"/>
+    <tag k="restriction" v="only_straight_on"/>
+    <tag k="bus:quality_only_exclude" v="v1"/>
   </relation>
   <relation id="69">
     <member type="way" ref="50" role="from"/>

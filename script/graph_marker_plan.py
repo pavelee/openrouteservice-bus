@@ -10,6 +10,7 @@ from osmium.osm import mutable
 from graph_patch_snapshot import digest, validate_snapshot
 
 MARKER_TAG = 'bus:quality_variant'
+ONLY_EXCLUDE_TAG = 'bus:quality_only_exclude'
 MAX_COMBINATIONS = 4096
 
 
@@ -27,11 +28,14 @@ def compatible(left, right):
 
 
 class MarkerPlan:
-    def __init__(self, source, snapshot, strip_access=True, encoding=None):
+    def __init__(self, source, snapshot, strip_access=True, encoding=None, flag_encoder_options="turn_costs=true"):
         validate_snapshot(snapshot)
         if snapshot['schema'] != 'route-quality-graph-snapshot-v2':
             raise ValueError('Explicit marker channels are required')
         self.source, self.snapshot, self.strip_access = str(source), snapshot, strip_access
+        if not isinstance(flag_encoder_options, str) or not flag_encoder_options:
+            raise ValueError("Explicit graph encoder options are required")
+        self.flag_encoder_options = flag_encoder_options
         self.bus_ways = set(snapshot['busRouteWayIds'])
         if any(MARKER_TAG in entry['tagOverride']['setTags'] for entry in snapshot['tagOverrides']) or any(MARKER_TAG in entry['wayDef']['tags'] for entry in snapshot['syntheticWays']):
             raise ValueError('Reserved graph marker tag in an intervention')
@@ -78,6 +82,8 @@ class MarkerPlan:
                     plan.ways[way.id] = plan.copy_way(way)
 
             def relation(self, relation):
+                if ONLY_EXCLUDE_TAG in relation.tags:
+                    raise ValueError('Reserved graph marker relation in the raw map')
                 plan.max_ids['relation'] = max(plan.max_ids['relation'], relation.id)
                 if relation.tags.get('type') == 'restriction' and relation.id not in plan.skip_relations:
                     plan.relations[relation.id] = {'id': relation.id, 'members': [(m.type, m.ref, m.role) for m in relation.members], 'tags': dict(relation.tags)}
@@ -177,7 +183,9 @@ class MarkerPlan:
             for active in states(self.way_dependencies[identity]):
                 entries.append({'key': self.encoding_key(identity, active), 'id': str(identity), 'nodes': list(map(str, way['nodes'])),
                                 'tags': self.way_tags(identity, active, way['tags'])})
-        request = {'schema': 'route-quality-graph-way-encoding-v1', 'flagEncoderOptions': 'turn_costs=true', 'ways': entries}
+        restrictions = sorted({value for relation in self.relations.values() for key, value in relation['tags'].items()
+                               if key == 'restriction' or key.startswith('restriction:')})
+        request = {'schema': 'route-quality-graph-way-encoding-v1', 'flagEncoderOptions': self.flag_encoder_options, 'ways': entries, 'restrictions': restrictions}
         encoded = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
         response = encoding(encoded)
         if response.get('schema') != 'route-quality-graph-way-encoding-result-v1' or response.get('requestSha256') != hashlib.sha256(encoded).hexdigest():
@@ -193,6 +201,9 @@ class MarkerPlan:
             results[key] = value
         if set(results) != {entry['key'] for entry in entries}:
             raise ValueError('Incomplete graph way encoding result')
+        self.restriction_types = response.get('restrictionTypes', {})
+        if set(self.restriction_types) != set(restrictions) or any(value not in ('ONLY', 'NOT', 'UNSUPPORTED') for value in self.restriction_types.values()):
+            raise ValueError('Incomplete graph restriction encoding result')
         self.encoding_request_sha256 = response['requestSha256']
         self.encoder = response['encoder']
         return results
@@ -253,6 +264,12 @@ class MarkerPlan:
     def variants(self, identity):
         return self.way_variants.get(identity, [{'id': identity, 'dependencies': [], 'active': ()}])
 
+    def variant_node(self, identity, variant, node):
+        if 'nodes' not in variant:
+            return node
+        position = self.reference_ways[identity]['nodes'].index(node)
+        return variant['nodes'][position]
+
     def build_relations(self):
         replacements = {}
         for identity, relation in sorted(self.relations.items()):
@@ -268,29 +285,33 @@ class MarkerPlan:
                 raise ValueError('Unsupported affected turn restriction: ' + str(identity))
             via = via[0]
             tags = relation['tags']
-            only_keys = [key for key, value in tags.items() if key.startswith('restriction') and value.startswith('only_')]
-            targets = [ways['to']]
-            if only_keys:
-                from_way = self.ways.get(ways['from'])
-                if from_way is None or via not in (from_way['nodes'][0], from_way['nodes'][-1]):
-                    raise ValueError('ONLY from-way must end at its via node: ' + str(identity))
-                targets = sorted(self.incident[via] - {ways['from'], ways['to']})
-                tags = {key: ('no_straight_on' + value[value.find(' @'):] if ' @' in value else 'no_straight_on') if key in only_keys else value for key, value in tags.items()}
+            keys = [key for key, value in tags.items() if (key == 'restriction' or key.startswith('restriction:'))
+                    and self.restriction_types[value] != 'UNSUPPORTED']
+            if not keys:
+                continue
+            common = {key: value for key, value in tags.items() if key not in keys}
             generated = []
-            for target in targets:
-                for left, right in product(self.variants(ways['from']), self.variants(target)):
-                    if not compatible(left, right):
-                        continue
-                    merged = set(left['active']) | set(right['active'])
-                    node = self.node_variants[via][tuple(i for i in sorted(merged) if i in self.node_dependencies[via])] if via in self.node_variants else via
-                    generated.append({'id': self.allocate('relation'), 'members': [('w', left['id'], 'from'), ('n', node, 'via'), ('w', right['id'], 'to')], 'tags': tags})
+            for key in keys:
+                only = self.restriction_types[tags[key]] == 'ONLY'
+                targets = sorted(self.incident[via] - {ways['to']}) if only else [ways['to']]
+                selected_tags = {**common, key: tags[key]}
+                if only:
+                    selected_tags[ONLY_EXCLUDE_TAG] = 'v1'
+                for target in targets:
+                    for left, right in product(self.variants(ways['from']), self.variants(target)):
+                        if not compatible(left, right):
+                            continue
+                        node = self.variant_node(ways['from'], left, via)
+                        generated.append({'id': self.allocate('relation'), 'members': [('w', left['id'], 'from'), ('n', node, 'via'), ('w', right['id'], 'to')], 'tags': selected_tags})
             replacements[identity] = generated
         return replacements
 
     @property
     def policy(self):
         body = {'schema': 'route-quality-graph-marker-policy-v1', 'setVersion': self.snapshot['setVersion'],
-                'snapshotSha256': self.snapshot['snapshotSha256'], 'officialInterventionIds': sorted(self.official),
+                'snapshotSha256': self.snapshot['snapshotSha256'],
+                'flagEncoderOptions': self.flag_encoder_options, 'encoder': self.encoder,
+                'encodingRequestSha256': self.encoding_request_sha256, 'officialInterventionIds': sorted(self.official),
                 'qualityInterventionIds': self.snapshot['markerChannels']['qualityInterventionIds'],
                 'rebuildOnlyInterventionIds': sorted(entry['interventionId'] for entry in self.snapshot['relationSkips'] if entry['interventionId'] not in self.official),
                 'variants': [{'token': token, 'interventionIds': list(dependencies), 'activeInterventionIds': list(active)} for (dependencies, active), token in self.tokens.items()]}

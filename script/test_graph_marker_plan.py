@@ -59,9 +59,9 @@ class GraphMarkerPlanTest(unittest.TestCase):
     def test_only_nie_zamyka_kopii_dozwolonej_drogi(self):
         plan = self.plan()
         rewritten = plan.replacement_relations[60]
-        self.assertEqual(len(rewritten), 2)
+        self.assertEqual(len(rewritten), 4)
         allowed_ids = {v['id'] for v in plan.way_variants[51]}
-        self.assertTrue(all(r['tags']['restriction'] == 'no_straight_on' for r in rewritten))
+        self.assertTrue(all(r['tags']['restriction'] == 'only_straight_on' and r['tags']['bus:quality_only_exclude'] == 'v1' for r in rewritten))
         self.assertTrue(all(r['members'][-1][1] not in allowed_ids for r in rewritten))
 
     def test_wyprodukowana_mapa_ma_unikalne_id_i_kompletne_referencje(self):
@@ -138,3 +138,13 @@ class GraphMarkerPlanTest(unittest.TestCase):
         states = {v['active']: v for v in plan.way_variants[10]}
         self.assertNotEqual(states[(10,)]['nodes'][1], states[(10, 16)]['nodes'][1])
         self.assertNotEqual(states[(16,)]['nodes'][3], states[(10, 16)]['nodes'][3])
+
+    def test_only_wewnatrz_from_zachowuje_wyjscia_bez_ciecia_drogi(self):
+        plan = self.plan()
+        self.assertEqual(plan.node_degree(71, ()), 3)
+        self.assertEqual(plan.node_degree(71, (17,)), 1)
+        self.assertEqual(len(plan.way_variants[70]), 2)
+        self.assertTrue(all(len(v['nodes']) == 3 for v in plan.way_variants[70]))
+        allowed = {v['id'] for v in plan.way_variants[73]}
+        self.assertTrue(all(r['members'][-1][1] not in allowed for r in plan.replacement_relations[80]))
+        self.assertTrue(any(r['members'][0][1] == r['members'][-1][1] for r in plan.replacement_relations[80]))

@@ -55,6 +55,8 @@ class RouteQualityGraphProducedTest {
                 .add(new ORSDefaultFlagEncoderFactory().createFlagEncoder(FlagEncoderNames.BUS, new PMap().putObject("turn_costs", true)))
                 .add(Subnetwork.create("bus_custom")).add(new OSMMaxSpeedParser()).build();
         var graph = new GraphBuilder(em).withTurnCosts(true).build();
+        if (input.getFileName().toString().equals("k9-small-marker-produced.xml"))
+            graph.getProperties().put("route_quality.marker_policy", Files.readString(fixtures.resolve("k9-small-marker-policy.json")));
         var reader = new ORSOSMReader(graph, new GraphProcessContext(new ProfileProperties()));
         reader.setFile(input.toFile());
         reader.setWayPointMaxDistance(1);
@@ -121,7 +123,7 @@ class RouteQualityGraphProducedTest {
         var policy = mapper.readTree(fixtures.resolve("k9-small-marker-policy.json").toFile());
         var frozen = mapper.readTree(fixtures.resolve("k9-small-marker-baselines.json").toFile());
         var references = frozen.get("maps");
-        assertEquals(128, references.size());
+        assertEquals(256, references.size());
         try (var marked = read(fixtures.resolve("k9-small-marker-produced.xml"))) {
             for (var reference : references) {
                 var active = integers(reference.get("activeInterventionIds"));
@@ -133,19 +135,25 @@ class RouteQualityGraphProducedTest {
                     var markedWeight = weighting(marked, policy.get("variants"), active);
                     var plainWeight = weighting(ordinary, null, active);
                     assertEquals(properties(ordinary, plainWeight), properties(marked, markedWeight), "edge properties active=" + active);
-                    for (double lat : new double[]{52.23, 52.24, 52.25, 52.26, 52.28, 52.29}) {
+                    for (double lat : new double[]{52.23, 52.24, 52.25, 52.26, 52.28, 52.29, 52.33}) {
                         for (boolean reverse : new boolean[]{false, true}) {
                             double from = reverse ? 21.01 : 21.0, to = reverse ? 21.0 : 21.01;
                             var expected = route(ordinary, plainWeight, lat, from, lat, to);
                             var actual = route(marked, markedWeight, lat, from, lat, to);
                             assertEquals(expected, actual, "active=" + active + " lat=" + lat + " reverse=" + reverse);
                             if (lat == 52.23 || lat == 52.26 || lat == 52.28 || lat == 52.29) assertTrue(actual.found());
+                            if (lat == 52.33) assertEquals(!reverse || active.contains(17), actual.found());
                             if (lat == 52.25) assertEquals(active.contains(13), actual.found());
                             if (lat == 52.24) assertEquals(reverse == active.contains(11), actual.found());
                         }
                     }
                     assertTrue(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.01).found());
                     assertEquals(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.01), route(marked, markedWeight, 52.28, 21, 52.285, 21.01));
+                    for (double endLat : new double[]{52.326, 52.338}) {
+                        var expected = route(ordinary, plainWeight, 52.33, 21.01, endLat, 21.005);
+                        assertEquals(expected, route(marked, markedWeight, 52.33, 21.01, endLat, 21.005));
+                        if (!active.contains(17)) assertFalse(expected.found());
+                    }
                     assertFalse(route(marked, markedWeight, 52.28, 21, 52.285, 21.005).found());
                     assertEquals(route(ordinary, plainWeight, 52.28, 21, 52.285, 21.005), route(marked, markedWeight, 52.28, 21, 52.285, 21.005));
                 }

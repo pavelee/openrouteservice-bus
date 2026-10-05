@@ -16,6 +16,8 @@ package org.heigit.ors.routing.graphhopper.extensions;
 import com.carrotsearch.hppc.LongArrayList;
 import com.graphhopper.coll.GHLongObjectHashMap;
 import com.graphhopper.reader.ReaderNode;
+import com.graphhopper.reader.ReaderRelation;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerTurnRestrictions;
 import com.graphhopper.reader.ReaderWay;
 import com.graphhopper.reader.osm.OSMReader;
 import com.graphhopper.storage.GraphHopperStorage;
@@ -36,6 +38,7 @@ public class ORSOSMReader extends OSMReader {
     private static final Logger LOGGER = Logger.getLogger(ORSOSMReader.class.getName());
 
     private final GraphProcessContext procCntx;
+    private final GraphHopperStorage graphStorage;
     private boolean processNodeTags;
     private static final String KEY_COUNTRY = "country";
     private Map<Long, String> countries;
@@ -54,6 +57,7 @@ public class ORSOSMReader extends OSMReader {
 
     public ORSOSMReader(GraphHopperStorage storage, GraphProcessContext procCntx) {
         super(storage);
+        this.graphStorage = storage;
 
         enforce2D();
         this.procCntx = procCntx;
@@ -135,6 +139,11 @@ public class ORSOSMReader extends OSMReader {
         }
 
         return node;
+    }
+
+    @Override
+    protected void processRelation(ReaderRelation relation) {
+        if (!GraphMarkerTurnRestrictions.apply(graphStorage, this, relation)) super.processRelation(relation);
     }
 
     @Override
