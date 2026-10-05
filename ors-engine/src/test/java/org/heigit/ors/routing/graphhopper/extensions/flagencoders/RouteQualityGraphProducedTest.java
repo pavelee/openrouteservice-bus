@@ -121,7 +121,7 @@ class RouteQualityGraphProducedTest {
         var policy = mapper.readTree(fixtures.resolve("k9-small-marker-policy.json").toFile());
         var frozen = mapper.readTree(fixtures.resolve("k9-small-marker-baselines.json").toFile());
         var references = frozen.get("maps");
-        assertEquals(64, references.size());
+        assertEquals(128, references.size());
         try (var marked = read(fixtures.resolve("k9-small-marker-produced.xml"))) {
             for (var reference : references) {
                 var active = integers(reference.get("activeInterventionIds"));

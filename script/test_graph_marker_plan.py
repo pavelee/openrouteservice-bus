@@ -32,10 +32,12 @@ class GraphMarkerPlanTest(unittest.TestCase):
 
     def test_wylaczana_droga_boczna_ma_osobne_skrzyzowanie_i_wariant_glownej(self):
         plan = self.plan()
-        off, on = plan.way_variants[10]
+        off = next(v for v in plan.way_variants[10] if not v['active'])
+        on = next(v for v in plan.way_variants[10] if v['active'] == (10,))
         side_off, side_on = plan.way_variants[12]
         self.assertEqual(off['nodes'][1], side_off['nodes'][0])
-        self.assertEqual(on['nodes'][1], side_on['nodes'][0])
+        self.assertFalse(plan.encoding_results[plan.encoding_key(12, side_on['active'])]['accepted'])
+        self.assertEqual(plan.nodes[on['nodes'][1]]['location'], plan.nodes[2]['location'])
         self.assertNotEqual(off['nodes'][1], on['nodes'][1])
         self.assertNotEqual(off['nodes'][2], on['nodes'][2])
         self.assertEqual(off['nodes'][0], on['nodes'][0])
@@ -128,3 +130,11 @@ class GraphMarkerPlanTest(unittest.TestCase):
             MarkerPlan(FIXTURES / 'k9-small-marker-map.xml',
                        json.loads((FIXTURES / 'k9-small-marker-snapshot.json').read_text()), False,
                        encoding=lambda request: result)
+
+    def test_osobne_blokady_bocznych_drog_nie_wspoldziela_prywatnych_punktow_glownej(self):
+        plan = self.plan()
+        self.assertEqual(plan.node_degree(2, (10,)), 1)
+        self.assertEqual(plan.node_degree(35, (16,)), 1)
+        states = {v['active']: v for v in plan.way_variants[10]}
+        self.assertNotEqual(states[(10,)]['nodes'][1], states[(10, 16)]['nodes'][1])
+        self.assertNotEqual(states[(16,)]['nodes'][3], states[(10, 16)]['nodes'][3])

@@ -151,13 +151,14 @@ class MarkerPlan:
                     self.tokens[token_key] = len(self.tokens) + 1
                 variant_nodes = []
                 for position, node in enumerate(way['nodes']):
-                    if node in self.node_variants:
+                    private_pillar = position not in (0, len(way['nodes']) - 1) and self.node_degree(node, active) <= 1
+                    if active and private_pillar:
+                        cloned = self.allocate('node')
+                        self.nodes[cloned] = {**self.nodes[node], 'id': cloned, 'originalId': node, 'active': active}
+                        variant_nodes.append(cloned)
+                    elif node in self.node_variants:
                         projected = tuple(i for i in active if i in self.node_dependencies[node])
                         variant_nodes.append(self.node_variants[node][projected])
-                    elif active and position not in (0, len(way['nodes']) - 1) and self.references[node] == 1:
-                        cloned = self.allocate('node')
-                        self.nodes[cloned] = {**self.nodes[node], 'id': cloned, 'originalId': node}
-                        variant_nodes.append(cloned)
                     else:
                         variant_nodes.append(node)
                 variants.append({'id': identity if not active else self.allocate('way'), 'nodes': variant_nodes,
@@ -199,6 +200,18 @@ class MarkerPlan:
     @staticmethod
     def encoding_key(identity, active):
         return 'variant:' + str(identity) + ':' + ','.join(map(str, active))
+
+    def node_degree(self, node, active):
+        degree = 0
+        for identity in self.incident[node]:
+            if identity in self.ways:
+                local = tuple(i for i in sorted(self.way_dependencies[identity]) if i in active)
+                accepted = self.encoding_results[self.encoding_key(identity, local)]['accepted']
+            else:
+                accepted = self.encoding_results['reference:' + str(identity)]['accepted']
+            if accepted:
+                degree += self.reference_ways[identity]['nodes'].count(node)
+        return degree
 
     @staticmethod
     def copy_way(way):
@@ -300,7 +313,7 @@ class MarkerPlan:
                 if not self.extra_nodes:
                     for identity, node in sorted(plan.nodes.items()):
                         if identity > self.raw_node_max:
-                            writer.add_node(mutable.Node(id=identity, location=node['location'], tags=plan.node_tags(node['originalId'], (), node['tags'])))
+                            writer.add_node(mutable.Node(id=identity, location=node['location'], tags=plan.node_tags(node['originalId'], node.get('active', ()), node['tags'])))
                     self.extra_nodes = True
                 self.emit_way(plan.copy_way(way))
 
