@@ -5,13 +5,29 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from graph_patch_snapshot import validate_snapshot, digest
+from graph_patch_snapshot import validate_snapshot, digest, classic_snapshot
 import transform_osm
 
 FIXTURE = Path(__file__).parent / 'test-fixtures/k9-graph-snapshot.json'
 
 
 class GraphSnapshotTest(unittest.TestCase):
+    def test_klasyczna_kontrola_off_zachowuje_oficjalne_wpisy_i_dlug_restrykcji(self):
+        marker=self.marker_snapshot()
+        for mode in ('ON','OFF'):
+            result=classic_snapshot(marker,mode)
+            self.assertEqual(validate_snapshot(result),result)
+            self.assertEqual(result['busRouteWayIds'],marker['busRouteWayIds'])
+            self.assertEqual(result['relationSkips'],marker['relationSkips'])
+            for name in ('wayBlocks','tagOverrides','syntheticWays'):
+                expected=marker[name] if mode=='ON' else [entry for entry in marker[name] if entry['interventionId'] in marker['markerChannels']['officialInterventionIds']]
+                self.assertEqual(result[name],expected)
+        self.assertEqual(marker['schema'],'route-quality-graph-snapshot-v2')
+
+    def test_projekcja_kontroli_nie_przyjmuje_klasycznej_migawki_lub_nieznanego_trybu(self):
+        with self.assertRaises(ValueError):classic_snapshot(self.marker_snapshot(),'SHADOW')
+        with self.assertRaises(ValueError):classic_snapshot(classic_snapshot(self.marker_snapshot(),'ON'),'OFF')
+
     def marker_snapshot(self):
         return json.loads((FIXTURE.parent / 'k9-marker-snapshot.json').read_text())
 

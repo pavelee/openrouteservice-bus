@@ -170,3 +170,20 @@ def validate_build_inputs(snapshot_path, receipt_path, pbf_path, transform_path,
                 or receipt['configSha256'] != file_digest(config) or receipt['transformBundleSha256'] != bundle_digest(Path(transform_path).parent)):
             raise ValueError('Marker policy, encoder, configuration or transformation bundle changed')
     return receipt
+
+
+def classic_snapshot(snapshot, mode):
+    validate_snapshot(snapshot)
+    if snapshot['schema'] != 'route-quality-graph-snapshot-v2' or mode not in ('ON', 'OFF'):
+        raise ValueError('Classic marker control requires explicit v2 and ON/OFF')
+    official = set(snapshot['markerChannels']['officialInterventionIds'])
+    body = {key: value for key, value in snapshot.items() if key not in ('markerChannels', 'snapshotSha256')}
+    kept = set()
+    for name in ('syntheticWays', 'wayBlocks', 'tagOverrides', 'relationSkips'):
+        body[name] = [entry for entry in snapshot[name]
+                      if mode == 'ON' or entry['interventionId'] in official or name == 'relationSkips']
+        kept.update(entry['interventionId'] for entry in body[name])
+    body['schema'] = 'route-quality-graph-snapshot-v1'
+    body['entryFingerprints'] = [entry for entry in snapshot['entryFingerprints'] if entry['interventionId'] in kept]
+    body['setVersion'] = 'rq-graph-v1:' + digest(body['entryFingerprints'])
+    return validate_snapshot({**body, 'snapshotSha256': digest(body)})
