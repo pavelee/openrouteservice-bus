@@ -1,5 +1,7 @@
 package org.heigit.ors.api.services;
 
+import org.heigit.ors.api.routequality.GraphMarkerHeader;
+
 import org.heigit.ors.api.APIEnums;
 import org.heigit.ors.api.config.ApiEngineProperties;
 import org.heigit.ors.api.config.EndpointsProperties;
@@ -54,6 +56,9 @@ public class IsochronesService extends ApiService {
 
         // TODO REFACTORING where should we put the validation code?
         validateAgainstConfig(isochroneRequest);
+        var profile = RoutingProfileManager.getInstance().getRoutingProfile(isochronesRequest.getProfileName());
+        if (profile != null)
+            GraphMarkerHeader.rejectUnsupportedService(profile.getGraphhopper().getGraphHopperStorage(), IsochronesErrorCodes.UNKNOWN);
 
         if (!travellers.isEmpty()) {
             IsochroneMapCollection isoMaps = isochroneRequest.computeIsochrones(RoutingProfileManager.getInstance());

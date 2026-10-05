@@ -40,11 +40,15 @@ class GraphMarkerHeaderTest {
         try (var graph = new com.graphhopper.storage.GraphBuilder(em).withTurnCosts(true).build()) {
             var off = new org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection("OFF", null, List.of());
             assertNull(GraphMarkerHeader.validate(graph, off, 2003));
+            assertDoesNotThrow(() -> GraphMarkerHeader.rejectUnsupportedService(graph, 6000));
             var params = new org.heigit.ors.routing.RouteSearchParameters();
             assertFalse(params.requiresFullyDynamicWeights());
             graph.getProperties().put(org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy.PROPERTY,
                     java.nio.file.Files.readString(java.nio.file.Path.of("../script/test-fixtures/k9-small-marker-policy.json")));
             params.setGraphMarkerSelection(GraphMarkerHeader.validate(graph, off, 2003));
+            var unsupported = assertThrows(org.heigit.ors.exceptions.StatusCodeException.class,
+                    () -> GraphMarkerHeader.rejectUnsupportedService(graph, 6000));
+            assertEquals(501, unsupported.getStatusCode());
             assertTrue(params.requiresFullyDynamicWeights());
             assertEquals("OFF", params.getGraphMarkerSelection().mode());
             assertEquals("ON", GraphMarkerHeader.validate(graph, null, 2003).mode());

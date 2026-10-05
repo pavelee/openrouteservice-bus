@@ -1,5 +1,7 @@
 package org.heigit.ors.api.services;
 
+import org.heigit.ors.api.routequality.GraphMarkerHeader;
+
 import org.heigit.ors.api.APIEnums;
 import org.heigit.ors.api.config.ApiEngineProperties;
 import org.heigit.ors.api.config.EndpointsProperties;
@@ -44,6 +46,7 @@ public class MatrixService extends ApiService {
             RoutingProfile rp = RoutingProfileManager.getInstance().getRoutingProfile(coreRequest.getProfileName());
             if (rp == null)
                 throw new InternalServerException(MatrixErrorCodes.UNKNOWN, "Unable to find an appropriate routing profile.");
+            GraphMarkerHeader.rejectUnsupportedService(rp.getGraphhopper().getGraphHopperStorage(), MatrixErrorCodes.UNKNOWN);
             return coreRequest.computeMatrix(rp);
         } catch (StatusCodeException e) {
             throw e;

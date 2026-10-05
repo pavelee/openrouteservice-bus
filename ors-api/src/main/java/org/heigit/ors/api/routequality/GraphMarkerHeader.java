@@ -16,6 +16,12 @@ public final class GraphMarkerHeader {
     public static final String NAME = "X-Traska-Route-Quality";
     private GraphMarkerHeader() {}
 
+    public static void rejectUnsupportedService(GraphHopperStorage graph, int errorCode) throws org.heigit.ors.exceptions.StatusCodeException {
+        if (GraphMarkerPolicy.fromGraph(graph) != null)
+            throw new org.heigit.ors.exceptions.StatusCodeException(org.heigit.ors.common.StatusCode.NOT_IMPLEMENTED, errorCode,
+                    "Marker graphs support directions and snap only");
+    }
+
     public static GraphMarkerSelection read(HttpServletRequest request, int errorCode) throws ParameterValueException {
         try {
             return parse(request.getHeader(NAME));

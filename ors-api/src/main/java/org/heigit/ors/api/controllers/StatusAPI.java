@@ -109,7 +109,10 @@ public class StatusAPI {
                         jProfileProps.put("encoded_values",jEVs);
                     }
                     var markerPolicy = rp.getGraphProperties().get("route_quality.marker_policy");
-                    if (!markerPolicy.isEmpty()) jProfileProps.put("route_quality_markers", new JSONObject(markerPolicy));
+                    if (!markerPolicy.isEmpty()) {
+                        jProfileProps.put("route_quality_markers", new JSONObject(markerPolicy));
+                        jProfileProps.put("route_quality_marker_queries", new JSONArray(new String[]{"directions", "snap"}));
+                    }
                     jProfiles.put(profile.getProfileName(), jProfileProps);
                 }
 
