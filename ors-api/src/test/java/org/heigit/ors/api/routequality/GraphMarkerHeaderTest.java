@@ -61,6 +61,13 @@ class GraphMarkerHeaderTest {
     }
 
     @Test
+    @DisplayName("Drugi dokument lub tekst po poprawnym OFF nie jest prawidłowym nagłówkiem")
+    void trailingContentFails() {
+        for (var suffix : new String[]{" {}", " invalid"})
+            assertThrows(IllegalArgumentException.class, () -> GraphMarkerHeader.parse(header("OFF", "[]", "") + suffix));
+    }
+
+    @Test
     @DisplayName("Niepoprawny nagłówek jest błędem klienta z kodem 400")
     void invalidHttpHeaderHasClientError() {
         var request = new org.springframework.mock.web.MockHttpServletRequest();

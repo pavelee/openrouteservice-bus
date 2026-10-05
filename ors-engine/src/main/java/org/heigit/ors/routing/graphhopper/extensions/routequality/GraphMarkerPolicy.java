@@ -166,6 +166,8 @@ public final class GraphMarkerPolicy {
         var disabled = new HashSet<>(selection.disabledInterventionIds());
         if (!new HashSet<>(ids(document.get("qualityInterventionIds"))).containsAll(disabled))
             throw new IllegalArgumentException("Graph selection can disable only declared quality interventions");
+        if (!Collections.disjoint(disabled, ids(document.get("rebuildOnlyInterventionIds"))))
+            throw new IllegalArgumentException("Selected intervention requires graph rebuild");
         Set<Integer> selected = new HashSet<>();
         for (var variant : document.get("variants")) {
             var active = new HashSet<>(ids(variant.get("activeInterventionIds")));

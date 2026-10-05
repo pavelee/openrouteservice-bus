@@ -53,4 +53,21 @@ class GraphMarkerSelectionTest {
             assertThrows(IllegalArgumentException.class, () -> policy.selectedTokens(new GraphMarkerSelection("ON", document.get("policySha256").asText(), List.of(id))));
         assertThrows(IllegalArgumentException.class, () -> policy.selectedTokens(new GraphMarkerSelection("OFF", "a".repeat(64), List.of())));
     }
+
+    @Test
+    @DisplayName("Pojedynczy wpis wymagający przebudowy nie może udawać wyłączonego przez zapytanie")
+    void rebuildOnlyCannotBeIndividuallyDisabled() throws Exception {
+        var mapper = new ObjectMapper().enable(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+        var document = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(Files.readString(file));
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.get("qualityInterventionIds")).add(18);
+        document.putArray("rebuildOnlyInterventionIds").add(18);
+        java.util.Map<String, Object> body = mapper.convertValue(document, java.util.Map.class);
+        body.remove("policySha256");
+        document.put("policySha256", GraphMarkerPolicy.digest(mapper.writeValueAsBytes(body)));
+        var policy = GraphMarkerPolicy.parse(document.toString());
+        var selection = new GraphMarkerSelection("ON", document.get("policySha256").asText(), List.of(18L));
+        assertThrows(IllegalArgumentException.class, () -> policy.selectedTokens(selection));
+        assertEquals(GraphMarkerPolicy.parse(Files.readString(file)).selectedTokens(new GraphMarkerSelection("OFF", null, List.of())),
+                policy.selectedTokens(new GraphMarkerSelection("OFF", null, List.of())));
+    }
 }

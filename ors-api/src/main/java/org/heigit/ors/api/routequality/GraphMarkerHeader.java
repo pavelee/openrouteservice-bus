@@ -38,7 +38,9 @@ public final class GraphMarkerHeader {
         if (header == null) return null;
         try {
             if (header.length() > 8192) throw new IllegalArgumentException("Graph selection header exceeds its budget");
-            var document = new ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION).readTree(header);
+            var document = new ObjectMapper()
+                    .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                    .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(header);
             if (document == null || !document.isObject() || !document.path("schema").asText().equals("route-quality-graph-selection-v1"))
                 throw new IllegalArgumentException("Invalid graph selection header");
             var fields = Set.of("schema", "mode", "policySha256", "disabledInterventionIds");
