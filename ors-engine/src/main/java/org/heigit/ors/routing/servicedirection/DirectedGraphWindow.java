@@ -5,7 +5,6 @@ import com.graphhopper.routing.util.EdgeFilter;
 import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.storage.index.Snap;
 import com.graphhopper.util.*;
-import com.graphhopper.util.shapes.BBox;
 import org.heigit.ors.routing.RoutingProfile;
 import org.heigit.ors.routing.RouteSearchParameters;
 import org.heigit.ors.routing.graphhopper.extensions.ORSEdgeFilterFactory;
@@ -21,6 +20,7 @@ public final class DirectedGraphWindow {
     public record Turn(int from, int to, double cost) {}
     public record Window(String schema, String status, String graphDate, String policySha256,
                          double radiusM, List<Integer> snaps, List<Node> nodes, List<Arc> arcs, List<Turn> turns) {}
+    private record NodeDistance(int node, double distance) {}
     private DirectedGraphWindow() {}
 
     public static Window read(RoutingProfile profile, RouteSearchParameters parameters, Coordinate[] locations,
@@ -49,21 +49,32 @@ public final class DirectedGraphWindow {
         }
         var graph = QueryGraph.create(storage.getBaseGraph(), snaps);
         Weighting queryWeighting = graph.wrapWeighting(weighting);
-        double lat = locations[0].y, lng = locations[0].x;
-        double dy = radiusM / 110000, dx = dy / Math.cos(Math.toRadians(lat));
-        BBox bounds = new BBox(lng - dx, lng + dx, lat - dy, lat + dy);
+        // An undirected distance ball contains every directed loop within the bound.
+        long until = System.nanoTime() + 2_000_000_000L;
+        var queue = new PriorityQueue<NodeDistance>(Comparator.comparingDouble(NodeDistance::distance).thenComparingInt(NodeDistance::node));
+        Map<Integer, Double> distance = new HashMap<>();
+        int origin = snaps.get(0).getClosestNode();
+        queue.add(new NodeDistance(origin, 0)); distance.put(origin, 0.0);
         Set<Integer> candidates = new TreeSet<>();
-        gh.getLocationIndex().query(bounds, id -> {
-            var edge = storage.getEdgeIteratorStateForKey(id * 2);
-            candidates.add(edge.getBaseNode()); candidates.add(edge.getAdjNode());
-        });
-        for (int id = storage.getNodes(); id < graph.getNodes(); id++) candidates.add(id);
-        var access = graph.getNodeAccess();
-        candidates.removeIf(id -> DistanceCalcEarth.DIST_EARTH.calcDist(lat, lng, access.getLat(id), access.getLon(id)) > radiusM);
+        while (!queue.isEmpty() && candidates.size() <= 30000 && System.nanoTime() < until && !cancelled.getAsBoolean()) {
+            var current = queue.remove();
+            if (current.distance() != distance.get(current.node())) continue;
+            candidates.add(current.node());
+            var edges = graph.createEdgeExplorer().setBaseNode(current.node());
+            while (edges.next()) {
+                if (!filter.accept(edges) || (!Double.isFinite(queryWeighting.calcEdgeWeight(edges, false))
+                        && !Double.isFinite(queryWeighting.calcEdgeWeight(edges, true)))) continue;
+                double next = current.distance() + edges.getDistance();
+                if (next > radiusM || next >= distance.getOrDefault(edges.getAdjNode(), Double.POSITIVE_INFINITY)) continue;
+                distance.put(edges.getAdjNode(), next); queue.add(new NodeDistance(edges.getAdjNode(), next));
+            }
+        }
+        boolean partial = !queue.isEmpty();
         String policy = storage.getProperties().get(GraphMarkerPolicy.PROPERTY);
         String sha = policy.isEmpty() ? "" : new com.fasterxml.jackson.databind.ObjectMapper().readTree(policy).path("policySha256").asText();
         return collect(graph, queryWeighting, graph.wrapWeighting(corridorWeighting), filter, candidates, storage.getProperties().get("datareader.import.date"),
-                sha, radiusM, snaps.stream().map(Snap::getClosestNode).toList(), cancelled);
+                sha, radiusM, snaps.stream().map(Snap::getClosestNode).toList(),
+                () -> partial || cancelled.getAsBoolean() || System.nanoTime() > until);
     }
 
     static Window collect(QueryGraph graph, Weighting queryWeighting, Weighting corridorWeighting, EdgeFilter filter, Set<Integer> candidates,
