@@ -39,7 +39,8 @@ class DirectedGraphWindowTest {
             graph.getNodeAccess().setNode(0, 52, 21);
             graph.getNodeAccess().setNode(1, 52, 21.002);
             graph.edge(0, 1).setDistance(140).set(encoder.getAccessEnc(), true, true).set(encoder.getAverageSpeedEnc(), 30);
-            try (var index = new LocationIndexTree(graph, graph.getDirectory())) {
+            var index = new LocationIndexTree(graph, graph.getDirectory());
+            try {
                 index.prepareIndex();
                 var snap = index.findClosest(52, 21.001, EdgeFilter.ALL_EDGES);
                 var query = QueryGraph.create(graph, List.of(snap));
@@ -49,7 +50,7 @@ class DirectedGraphWindowTest {
                 result.arcs().forEach(a -> arcs.put(a.id(), a));
                 assertFalse(result.turns().isEmpty());
                 assertTrue(result.turns().stream().noneMatch(t -> arcs.get(t.from()).to() == snap.getClosestNode() && (t.from() ^ 1) == t.to()));
-            }
+            } finally { index.close(); }
         }
     }
 
