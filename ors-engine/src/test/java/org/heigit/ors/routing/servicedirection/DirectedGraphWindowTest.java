@@ -25,7 +25,7 @@ class DirectedGraphWindowTest {
             var second = graph.edge(1, 2).setDistance(70).set(encoder.getAccessEnc(), true, true).set(encoder.getAverageSpeedEnc(), 30);
             graph.getTurnCostStorage().set(em.getDecimalEncodedValue(TurnCost.key("car")), first.getEdge(), 1, second.getEdge(), Double.POSITIVE_INFINITY);
             var weighting = new ShortestWeighting(encoder, new DefaultTurnCostProvider(encoder, graph.getTurnCostStorage()));
-            var result = DirectedGraphWindow.collect(QueryGraph.create(graph, List.of()), weighting, EdgeFilter.ALL_EDGES,
+            var result = DirectedGraphWindow.collect(QueryGraph.create(graph, List.of()), weighting, weighting, EdgeFilter.ALL_EDGES,
                     new TreeSet<>(List.of(0, 1, 2)), "date", "policy", 2005, List.of(0, 1, 2), () -> false);
             assertEquals("COMPLETE", result.status());
             assertTrue(result.arcs().stream().noneMatch(a -> a.from() == 1 && a.to() == 0));
@@ -43,7 +43,7 @@ class DirectedGraphWindowTest {
                 index.prepareIndex();
                 var snap = index.findClosest(52, 21.001, EdgeFilter.ALL_EDGES);
                 var query = QueryGraph.create(graph, List.of(snap));
-                var result = DirectedGraphWindow.collect(query, query.wrapWeighting(new ShortestWeighting(encoder)), EdgeFilter.ALL_EDGES,
+                var result = DirectedGraphWindow.collect(query, query.wrapWeighting(new ShortestWeighting(encoder)), query.wrapWeighting(new ShortestWeighting(encoder)), EdgeFilter.ALL_EDGES,
                         new TreeSet<>(List.of(0, 1, snap.getClosestNode())), "date", "policy", 2005, List.of(snap.getClosestNode()), () -> false);
                 var arcs = new HashMap<Integer, DirectedGraphWindow.Arc>();
                 result.arcs().forEach(a -> arcs.put(a.id(), a));
@@ -57,7 +57,7 @@ class DirectedGraphWindowTest {
         var encoder = new CarFlagEncoder();
         try (var graph = new GraphBuilder(EncodingManager.create(encoder)).create()) {
             graph.getNodeAccess().setNode(0, 52, 21);
-            var result = DirectedGraphWindow.collect(QueryGraph.create(graph, List.of()), new ShortestWeighting(encoder), EdgeFilter.ALL_EDGES,
+            var result = DirectedGraphWindow.collect(QueryGraph.create(graph, List.of()), new ShortestWeighting(encoder), new ShortestWeighting(encoder), EdgeFilter.ALL_EDGES,
                     Set.of(0), "date", "policy", 2005, List.of(0), () -> true);
             assertEquals("BUDGET_EXHAUSTED", result.status());
         }

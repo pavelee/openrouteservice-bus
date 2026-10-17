@@ -19,6 +19,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/v2/service-direction")
 public class ServiceDirectionAPI {
+    public static final class GraphRequest extends RouteRequest {
+        @com.fasterxml.jackson.annotation.JsonProperty("corridor_model")
+        public org.heigit.ors.api.requests.routing.RouteRequestCustomModel corridorModel;
+        @com.fasterxml.jackson.annotation.JsonCreator
+        public GraphRequest(@com.fasterxml.jackson.annotation.JsonProperty("coordinates") java.util.List<java.util.List<Double>> coordinates) {
+            super(coordinates);
+        }
+    }
     private final RoutingService routing;
     public ServiceDirectionAPI(RoutingService routing) { this.routing = routing; }
 
@@ -33,7 +41,7 @@ public class ServiceDirectionAPI {
     }
 
     @PostMapping("/{profile}/graph")
-    public Map<String, Object> read(@PathVariable String profile, @RequestBody RouteRequest request,
+    public Map<String, Object> read(@PathVariable String profile, @RequestBody GraphRequest request,
                                     HttpServletRequest servlet) throws Exception {
         if (!profile.equals("driving-bus") || request.getCoordinates().size() != 3)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Expected driving-bus and three boundary locations");
@@ -50,7 +58,8 @@ public class ServiceDirectionAPI {
         parameters.setGraphMarkerSelection(GraphMarkerHeader.validate(rp.getGraphhopper().getGraphHopperStorage(),
                 request.getGraphMarkerSelection(), RoutingErrorCodes.INVALID_PARAMETER_VALUE));
         if (parameters.isTimeDependent()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Time dependent graphs are unsupported");
-        var window = DirectedGraphWindow.read(rp, parameters, converted.getCoordinates(), 2005,
+        var window = DirectedGraphWindow.read(rp, parameters, converted.getCoordinates(),
+                request.corridorModel == null ? null : request.corridorModel.toGHCustomModel(), 2005,
                 () -> Thread.currentThread().isInterrupted());
         var engine = AppInfo.getEngineInfo();
         engine.put("graph_date", window.graphDate());

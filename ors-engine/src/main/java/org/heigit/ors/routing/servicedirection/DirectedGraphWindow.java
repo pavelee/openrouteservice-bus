@@ -24,7 +24,7 @@ public final class DirectedGraphWindow {
     private DirectedGraphWindow() {}
 
     public static Window read(RoutingProfile profile, RouteSearchParameters parameters, Coordinate[] locations,
-                              double radiusM, BooleanSupplier cancelled) throws Exception {
+                              CustomModel corridorModel, double radiusM, BooleanSupplier cancelled) throws Exception {
         var gh = profile.getGraphhopper();
         var storage = gh.getGraphHopperStorage();
         var context = TemporaryUtilShelter.createSearchContext(parameters, profile);
@@ -34,11 +34,15 @@ public final class DirectedGraphWindow {
         var weighting = gh.createWeighting(gh.getProfile(context.profileName()), hints);
         if (!weighting.hasTurnCosts()) throw new IllegalArgumentException("Service direction requires turn costs");
         EdgeFilter filter = new ORSEdgeFilterFactory().createEdgeFilter(hints, context.getEncoder(), storage);
+        var snapFilter = new com.graphhopper.routing.util.DefaultSnapFilter(weighting,
+                gh.getEncodingManager().getBooleanEncodedValue(com.graphhopper.routing.ev.Subnetwork.key(context.profileName())));
+        var corridorHints = new PMap(); corridorHints.putAll(hints);
+        if (corridorModel != null) corridorHints.putObject("custom_model", corridorModel);
+        var corridorWeighting = gh.createWeighting(gh.getProfile(context.profileName()), corridorHints);
         List<Snap> snaps = new ArrayList<>();
         for (var location : locations) {
             var snap = gh.getLocationIndex().findClosest(location.y, location.x, edge ->
-                    filter.accept(edge) && (Double.isFinite(weighting.calcEdgeWeight(edge, false))
-                            || Double.isFinite(weighting.calcEdgeWeight(edge, true))));
+                    filter.accept(edge) && snapFilter.accept(edge));
             if (!snap.isValid() || snap.getQueryDistance() > 5)
                 throw new IllegalArgumentException("Service direction snap exceeds 5 metres");
             snaps.add(snap);
@@ -58,11 +62,11 @@ public final class DirectedGraphWindow {
         candidates.removeIf(id -> DistanceCalcEarth.DIST_EARTH.calcDist(lat, lng, access.getLat(id), access.getLon(id)) > radiusM);
         String policy = storage.getProperties().get(GraphMarkerPolicy.PROPERTY);
         String sha = policy.isEmpty() ? "" : new com.fasterxml.jackson.databind.ObjectMapper().readTree(policy).path("policySha256").asText();
-        return collect(graph, queryWeighting, filter, candidates, storage.getProperties().get("datareader.import.date"),
+        return collect(graph, queryWeighting, graph.wrapWeighting(corridorWeighting), filter, candidates, storage.getProperties().get("datareader.import.date"),
                 sha, radiusM, snaps.stream().map(Snap::getClosestNode).toList(), cancelled);
     }
 
-    static Window collect(QueryGraph graph, Weighting queryWeighting, EdgeFilter filter, Set<Integer> candidates,
+    static Window collect(QueryGraph graph, Weighting queryWeighting, Weighting corridorWeighting, EdgeFilter filter, Set<Integer> candidates,
                           String graphDate, String policySha256, double radiusM, List<Integer> snaps, BooleanSupplier cancelled) {
         var access = graph.getNodeAccess();
         List<Arc> arcs = new ArrayList<>();
@@ -83,7 +87,9 @@ public final class DirectedGraphWindow {
                 var points = edge.fetchWayGeometry(FetchMode.ALL);
                 List<double[]> coordinates = new ArrayList<>();
                 for (int i = 0; i < points.size(); i++) coordinates.add(new double[]{points.getLat(i), points.getLon(i)});
-                arcs.add(new Arc(edge.getEdgeKey(), node, edge.getAdjNode(), edge.getDistance(), cost, coordinates));
+                double corridorCost = corridorWeighting.calcEdgeWeight(edge, false);
+                arcs.add(new Arc(edge.getEdgeKey(), node, edge.getAdjNode(), edge.getDistance(),
+                        Double.isFinite(corridorCost) ? corridorCost : 1e15, coordinates));
                 outgoing.computeIfAbsent(node, k -> new ArrayList<>()).add(edge);
                 incoming.computeIfAbsent(edge.getAdjNode(), k -> new ArrayList<>()).add(edge);
                 if (arcs.size() > 30000) { status = "BUDGET_EXHAUSTED"; break outer; }
