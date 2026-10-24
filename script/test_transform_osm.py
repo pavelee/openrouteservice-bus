@@ -101,6 +101,13 @@ class TransformTest(unittest.TestCase):
         out = self.run_transform([{'nodeIds': ['3'], 'setTags': {'access': 'yes'}}])
         self.assertEqual(out['n'][3], {'barrier': 'gate', 'access': 'yes'})
 
+    def test_parking_access_survives_legacy_stripping(self):
+        for access in ('private', 'no'):
+            with self.subTest(access=access):
+                out = self.run_transform([{'wayIds': ['10'], 'setTags': {
+                    'highway': 'service', 'service': 'parking_aisle', 'access': access}}])
+                self.assertEqual(out['w'][10]['access'], access)
+
 
 if __name__ == '__main__':
     unittest.main()

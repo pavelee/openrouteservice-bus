@@ -30,6 +30,14 @@ class GraphMarkerPlanTest(unittest.TestCase):
             self.assertEqual(tags['maxspeed'], '50' if 12 in variant['active'] else '30')
             self.assertEqual(tags['bus:on_route'], 'yes')
 
+    def test_parking_access_survives_legacy_stripping(self):
+        plan = self.plan()
+        plan.strip_access = True
+        for access in ('private', 'no'):
+            with self.subTest(access=access):
+                tags = {'highway': 'service', 'service': 'parking_aisle', 'access': access}
+                self.assertEqual(plan.way_tags(999, (), tags), tags)
+
     def test_wylaczana_droga_boczna_ma_osobne_skrzyzowanie_i_wariant_glownej(self):
         plan = self.plan()
         off = next(v for v in plan.way_variants[10] if not v['active'])

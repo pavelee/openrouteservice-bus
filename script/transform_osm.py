@@ -22,7 +22,7 @@ SYNTHETIC_WAYS_MANIFEST carries the intervention ids, set version and snapshot
 fingerprint for the existing rollout callback.
 
 STRIP_ACCESS_TAGS (env, domyślnie "true"): historyczne globalne zdjęcie
-access=private/no ze wszystkich way'ów. BusFlagEncoder ma poprawną semantykę
+access=private/no z way'ów poza alejkami parkingowymi. BusFlagEncoder ma poprawną semantykę
 (private/no zabronione, chyba że bus/psv=yes) , Etap 4 planu uproszczenia to
 ustawienie "false" + pełny sweep regresyjny; do tego czasu default zachowuje
 dotychczasowe zachowanie mapy.

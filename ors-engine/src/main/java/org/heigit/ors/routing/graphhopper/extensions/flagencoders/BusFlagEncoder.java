@@ -91,8 +91,8 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     private static final double BUS_MAX_HEIGHT = 3.0;   // metry
     private static final double BUS_MAX_LENGTH = 18.75; // metry (max autobus przegubowy w UE)
 
-    // Podtypy service=*, które nie są drogą autobusu: alejka parkingu, podjazd, pas do okienka.
-    private static final Set<String> NON_BUS_SERVICE_VALUES = Set.of("parking_aisle", "driveway", "drive-through");
+    // These service subtypes need explicit bus evidence.
+    private static final Set<String> NON_BUS_SERVICE_VALUES = Set.of("driveway", "drive-through");
 
     private static final int MEAN_SPEED = 50;
 
@@ -151,10 +151,7 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         // Drogi zamknięte dla ruchu ogólnego — autobus korzysta z nich tylko przy jawnym
         // wyjątku (busAllowedHere w getAccess()). "private"/"no" dziedziczone z
         // VehicleFlagEncoder (upstream); tu dokładamy tylko "emergency".
-        // UWAGA: dopóki preprocessing mapy usuwa access=private/no globalnie
-        // (transform_osm.py, STRIP_ACCESS_TAGS), ta semantyka działa jedynie dla
-        // pozostałych kluczy restrykcji (motor_vehicle/vehicle/bus/psv) — pełne
-        // przejęcie semantyki dostępu przez enkoder to Etap 4 planu uproszczenia.
+        // Parking aisles preserve access; other ways still use the legacy stripping policy.
         restrictedValues.add("emergency");
 
         // Bus traps / słupki przepuszczające autobus
@@ -305,8 +302,8 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         boolean busAllowedHere = way.hasTag(busAccess, intendedValues);
         boolean dedicatedBusway = VAL_BUSWAY.equals(highwayValue) || VAL_BUS_GUIDEWAY.equals(highwayValue);
 
-        // Drogi serwisowe prowadzące na parkingi/podjazdy — pomijamy, chyba że jawnie dla autobusu
-        // (bus/psv) ALBO way należy do jakiejś relacji OSM route=bus (bus:on_route=yes).
+        // Public parking aisles remain available without gaining bus preference.
+        // Driveways and drive-through lanes still require bus evidence.
         //
         // Wyjątek `isOnBusRoute` dołożony 2026-08-15 (linia 735 / trasa 665221, kraniec Zegrze Płd. 03).
         // Przystanek końcowy stoi na parkingu, na który prowadzą DWA way'e highway=service +

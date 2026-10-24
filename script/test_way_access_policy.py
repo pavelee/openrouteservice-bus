@@ -10,11 +10,17 @@ class WayAccessPolicyTest(unittest.TestCase):
                 self.assertEqual(should_strip_way_access({'access': value}),
                                  value in ('private', 'no'))
 
-    def test_legacy_rule_does_not_depend_on_road_type(self):
-        for service in (None, 'parking_aisle', 'driveway', 'drive-through'):
+    def test_other_service_types_keep_legacy_behavior(self):
+        for service in (None, 'driveway', 'drive-through'):
             with self.subTest(service=service):
                 self.assertTrue(should_strip_way_access({
                     'highway': 'service', 'service': service, 'access': 'private'}))
+
+    def test_parking_aisle_retains_access_restrictions(self):
+        for value in ('private', 'no'):
+            with self.subTest(access=value):
+                self.assertFalse(should_strip_way_access({
+                    'highway': 'service', 'service': 'parking_aisle', 'access': value}))
 
 
 if __name__ == '__main__':

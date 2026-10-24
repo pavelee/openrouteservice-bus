@@ -1,5 +1,6 @@
 package org.heigit.ors.routing.graphhopper.extensions.flagencoders;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.graphhopper.json.Statement;
 import com.graphhopper.reader.ReaderNode;
 import com.graphhopper.reader.ReaderWay;
@@ -70,10 +71,54 @@ class BusFlagEncoderTest {
     }
 
     @Test
-    void testParkingAisleSkipped() {
+    void testPublicParkingAisleAccessibleWithoutBusPreference() {
         way.setTag("highway", "service");
         way.setTag("service", "parking_aisle");
+        assertTrue(encoder.getAccess(way).isWay());
+        EncodingManager.AcceptWay acceptWay = new EncodingManager.AcceptWay();
+        assertTrue(em.acceptWay(way, acceptWay));
+        IntsRef flags = em.handleWayTags(way, acceptWay, em.createRelationFlags());
+        assertFalse(em.getBooleanEncodedValue(BusFlagEncoder.KEY_BUS_PREFERRED).getBool(false, flags));
+    }
+
+    @Test
+    void testPalmiryRawParkingWaysAccessible() throws Exception {
+        try (var source = getClass().getResourceAsStream("/route-quality/palmiry-parking.json")) {
+            assertNotNull(source);
+            var fixture = new ObjectMapper().readTree(source);
+            for (var entry : fixture.get("ways")) {
+                ReaderWay parking = new ReaderWay(entry.get("id").asLong());
+                entry.get("tags").fields().forEachRemaining(tag -> parking.setTag(tag.getKey(), tag.getValue().asText()));
+                assertTrue(encoder.getAccess(parking).isWay(), entry.get("id").asText());
+            }
+        }
+    }
+
+    @Test
+    void testParkingAisleRetainsAccessAndPhysicalLimits() {
+        way.setTag("highway", "service");
+        way.setTag("service", "parking_aisle");
+        for (String access : new String[]{"private", "no"}) {
+            way.setTag("access", access);
+            assertTrue(encoder.getAccess(way).canSkip());
+        }
+        way.setTag("access", "no");
+        way.setTag("psv", "yes");
+        assertTrue(encoder.getAccess(way).isWay());
+        way.setTag("maxwidth", "2");
         assertTrue(encoder.getAccess(way).canSkip());
+    }
+
+    @Test
+    void testParkingAisleRetainsOnewayDirection() {
+        way.setTag("highway", "service");
+        way.setTag("service", "parking_aisle");
+        way.setTag("oneway", "yes");
+        EncodingManager.AcceptWay acceptWay = new EncodingManager.AcceptWay();
+        assertTrue(em.acceptWay(way, acceptWay));
+        IntsRef flags = em.handleWayTags(way, acceptWay, em.createRelationFlags());
+        assertTrue(encoder.getAccessEnc().getBool(false, flags));
+        assertFalse(encoder.getAccessEnc().getBool(true, flags));
     }
 
     @Test
