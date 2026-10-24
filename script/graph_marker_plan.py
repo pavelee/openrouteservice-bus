@@ -10,6 +10,7 @@ from osmium.osm import mutable
 from graph_patch_snapshot import digest, validate_snapshot
 from graph_marker_policy import validate_policy
 from way_access_policy import should_strip_way_access
+from terminal_parking_access import TerminalParkingAccess, PARKING_ACCESS_TAG
 
 MARKER_TAG = 'bus:quality_variant'
 ONLY_EXCLUDE_TAG = 'bus:quality_only_exclude'
@@ -39,7 +40,7 @@ class MarkerPlan:
             raise ValueError("Explicit graph encoder options are required")
         self.flag_encoder_options = flag_encoder_options
         self.bus_ways = set(snapshot['busRouteWayIds'])
-        if any(MARKER_TAG in entry['tagOverride']['setTags'] for entry in snapshot['tagOverrides']) or any(MARKER_TAG in entry['wayDef']['tags'] for entry in snapshot['syntheticWays']):
+        if any({MARKER_TAG, PARKING_ACCESS_TAG} & entry['tagOverride']['setTags'].keys() for entry in snapshot['tagOverrides']) or any({MARKER_TAG, PARKING_ACCESS_TAG} & entry['wayDef']['tags'].keys() for entry in snapshot['syntheticWays']):
             raise ValueError('Reserved graph marker tag in an intervention')
         self.official = set(snapshot['markerChannels']['officialInterventionIds'])
         self.blocks_by_way, self.overrides_by_way, self.overrides_by_node, self.synthetics_by_way = [defaultdict(list) for _ in range(4)]
@@ -76,6 +77,12 @@ class MarkerPlan:
                 for identity in way['nds']:
                     self.node_dependencies[int(identity)].add(entry['interventionId'])
         plan = self
+        self.parking_access = TerminalParkingAccess(
+            self.source,
+            possible_road_ids={identity for entry in snapshot['tagOverrides']
+                               if entry['tagOverride']['setTags'].get('highway')
+                               for identity in entry['tagOverride'].get('wayIds', ())},
+            added_ways=self.synthetic.values())
 
         class Direct(osmium.SimpleHandler):
             def node(self, node):
@@ -270,6 +277,8 @@ class MarkerPlan:
         for entry in self.overrides_by_way.get(identity, ()):
             if self.enabled(entry['interventionId'], active):
                 result.update(entry['tagOverride']['setTags'])
+        if self.parking_access.allows(identity, result):
+            result[PARKING_ACCESS_TAG] = 'terminal'
         if self.strip_access and should_strip_way_access(result):
             del result['access']
         if self.snapshot['busRouteWayIdsAvailable'] and str(identity) in self.bus_ways and not blocked and 'highway' in result:

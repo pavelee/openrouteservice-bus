@@ -71,18 +71,20 @@ class BusFlagEncoderTest {
     }
 
     @Test
-    void testPublicParkingAisleAccessibleWithoutBusPreference() {
+    void testTerminalParkingAisleAccessibleWithoutBusPreference() {
         way.setTag("highway", "service");
         way.setTag("service", "parking_aisle");
+        way.setTag("bus:parking_access", "terminal");
         assertTrue(encoder.getAccess(way).isWay());
         EncodingManager.AcceptWay acceptWay = new EncodingManager.AcceptWay();
         assertTrue(em.acceptWay(way, acceptWay));
         IntsRef flags = em.handleWayTags(way, acceptWay, em.createRelationFlags());
         assertFalse(em.getBooleanEncodedValue(BusFlagEncoder.KEY_BUS_PREFERRED).getBool(false, flags));
+        assertFalse(em.getBooleanEncodedValue(BusFlagEncoder.KEY_BUS_ON_ROUTE).getBool(false, flags));
     }
 
     @Test
-    void testPalmiryRawParkingWaysAccessible() throws Exception {
+    void testCompiledTerminalParkingWaysAccessible() throws Exception {
         try (var source = getClass().getResourceAsStream("/route-quality/palmiry-parking.json")) {
             assertNotNull(source);
             var fixture = new ObjectMapper().readTree(source);
@@ -95,9 +97,23 @@ class BusFlagEncoderTest {
     }
 
     @Test
+    void testThroughParkingWaysRequireBusEvidence() throws Exception {
+        try (var source = getClass().getResourceAsStream("/route-quality/through-parking.json")) {
+            assertNotNull(source);
+            var fixture = new ObjectMapper().readTree(source);
+            for (var entry : fixture.get("ways")) {
+                ReaderWay parking = new ReaderWay(entry.get("id").asLong());
+                entry.get("tags").fields().forEachRemaining(tag -> parking.setTag(tag.getKey(), tag.getValue().asText()));
+                assertTrue(encoder.getAccess(parking).canSkip(), entry.get("id").asText());
+            }
+        }
+    }
+
+    @Test
     void testParkingAisleRetainsAccessAndPhysicalLimits() {
         way.setTag("highway", "service");
         way.setTag("service", "parking_aisle");
+        way.setTag("bus:parking_access", "terminal");
         for (String access : new String[]{"private", "no"}) {
             way.setTag("access", access);
             assertTrue(encoder.getAccess(way).canSkip());
@@ -113,12 +129,21 @@ class BusFlagEncoderTest {
     void testParkingAisleRetainsOnewayDirection() {
         way.setTag("highway", "service");
         way.setTag("service", "parking_aisle");
+        way.setTag("bus:parking_access", "terminal");
         way.setTag("oneway", "yes");
         EncodingManager.AcceptWay acceptWay = new EncodingManager.AcceptWay();
         assertTrue(em.acceptWay(way, acceptWay));
         IntsRef flags = em.handleWayTags(way, acceptWay, em.createRelationFlags());
         assertTrue(encoder.getAccessEnc().getBool(false, flags));
         assertFalse(encoder.getAccessEnc().getBool(true, flags));
+    }
+
+    @Test
+    void testTerminalParkingMarkerDoesNotOpenDriveways() {
+        way.setTag("highway", "service");
+        way.setTag("service", "driveway");
+        way.setTag("bus:parking_access", "terminal");
+        assertTrue(encoder.getAccess(way).canSkip());
     }
 
     @Test

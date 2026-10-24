@@ -2,6 +2,9 @@
 import hashlib
 import json
 import re
+from pathlib import Path
+
+LEGACY_BUNDLE_FILES = ('transform_osm.py', 'graph_patch_snapshot.py', 'way_access_policy.py', 'terminal_parking_access.py')
 
 
 def canonical(value):
@@ -125,6 +128,10 @@ def file_digest(path):
     return result.hexdigest()
 
 
+def legacy_bundle_digest(directory):
+    return digest({name: file_digest(Path(directory) / name) for name in LEGACY_BUNDLE_FILES})
+
+
 def validate_receipt(receipt):
     if receipt.get('schema') not in ('route-quality-graph-transform-v1', 'route-quality-graph-transform-v2') or not re.fullmatch(
             'rq-graph-v[12]:[a-f0-9]{64}', str(receipt.get('setVersion', ''))):
@@ -135,6 +142,8 @@ def validate_receipt(receipt):
     fields = ('snapshotSha256', 'rawPbfSha256', 'pbfSha256', 'transformSha256')
     if marker:
         fields += ('transformBundleSha256', 'policySha256', 'policyFileSha256', 'encoderJarSha256', 'configSha256')
+    elif 'transformBundleSha256' in receipt:
+        fields += ('transformBundleSha256',)
     for key in fields:
         if not re.fullmatch('[a-f0-9]{64}', str(receipt.get(key, ''))):
             raise ValueError('Invalid graph transformation fingerprint')
@@ -152,7 +161,6 @@ def validate_build_inputs(snapshot_path, receipt_path, pbf_path, transform_path,
     if receipt['pbfSha256'] != file_digest(pbf_path) or receipt['transformSha256'] != file_digest(transform_path):
         raise ValueError('Graph map or transformation changed after receipt')
     if receipt['schema'] == 'route-quality-graph-transform-v2':
-        from pathlib import Path
         from graph_marker_policy import validate_policy, bundle_digest
         if encoder_jar is None or config is None:
             raise ValueError('Marker build requires the bound encoder JAR and configuration')
@@ -169,6 +177,8 @@ def validate_build_inputs(snapshot_path, receipt_path, pbf_path, transform_path,
         if (receipt['policyFileSha256'] != file_digest(policy_file) or receipt['encoderJarSha256'] != file_digest(encoder_jar)
                 or receipt['configSha256'] != file_digest(config) or receipt['transformBundleSha256'] != bundle_digest(Path(transform_path).parent)):
             raise ValueError('Marker policy, encoder, configuration or transformation bundle changed')
+    elif 'transformBundleSha256' in receipt and receipt['transformBundleSha256'] != legacy_bundle_digest(Path(transform_path).parent):
+        raise ValueError('Classic transformation bundle changed after receipt')
     return receipt
 
 

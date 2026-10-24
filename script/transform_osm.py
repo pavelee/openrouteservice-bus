@@ -39,9 +39,11 @@ import os
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
-from graph_patch_snapshot import file_digest, read_snapshot, validate_snapshot
+from graph_patch_snapshot import file_digest, read_snapshot, validate_snapshot, legacy_bundle_digest
 from way_access_policy import should_strip_way_access
+from terminal_parking_access import TerminalParkingAccess, PARKING_ACCESS_TAG
 
 import osmium
 from osmium.osm import mutable
@@ -51,6 +53,8 @@ def _merge_export(payload):
     ways = {}
     for entry in payload.get('syntheticWays', []):
         way_def = entry.get('wayDef') or {}
+        if PARKING_ACCESS_TAG in way_def.get('tags', {}):
+            raise ValueError('Reserved parking access tag in a graph patch')
         if way_def.get('id') and way_def.get('nds') and way_def.get('tags'):
             ways[way_def['id']] = way_def
     block_way_ids = set()
@@ -60,6 +64,8 @@ def _merge_export(payload):
     node_tag_overrides = {}
     for entry in payload.get('tagOverrides', []):
         defn = entry.get('tagOverride') or {}
+        if PARKING_ACCESS_TAG in defn.get('setTags', {}):
+            raise ValueError('Reserved parking access tag in a graph patch')
         for way_id in defn.get('wayIds') or []:
             tag_overrides.setdefault(str(way_id), {}).update(defn.get('setTags') or {})
         for node_id in defn.get('nodeIds') or []:
@@ -137,11 +143,12 @@ def load_graph_interventions():
 class TransformHandler(osmium.SimpleHandler):
     """Kopiuje obiekty do writera, nakładając transformacje (docstring modułu)."""
 
-    def __init__(self, writer, interventions, strip_access=True):
+    def __init__(self, writer, interventions, strip_access=True, parking_access=None):
         super().__init__()
         self.w = writer
         self.iv = interventions
         self.strip_access = strip_access
+        self.parking_access = parking_access
         self.synthetic_written = False
         # Guard na reprocessing: way'e syntetyczne obecne w wejściu nie są
         # wstrzykiwane ponownie (duplikat ID).
@@ -187,6 +194,10 @@ class TransformHandler(osmium.SimpleHandler):
             tags += [(k, v) for k, v in override.items() if k not in present]
             changed = True
             self.stats['overridden'] += 1
+
+        if self.parking_access and self.parking_access.allows(w.id, dict(tags)):
+            tags.append((PARKING_ACCESS_TAG, 'terminal'))
+            changed = True
 
         # 3. Strip access=private/no (STRIP_ACCESS_TAGS; Etap 4 = wyłączenie).
         if self.strip_access and should_strip_way_access(dict(tags)):
@@ -246,8 +257,13 @@ def transform(input_file, output_file, interventions, strip_access=True):
         os.remove(output_file)
 
     start = time.time()
+    parking_access = TerminalParkingAccess(
+        input_file,
+        possible_road_ids={identity for identity, tags in interventions['tag_overrides'].items() if tags.get('highway')},
+        added_ways=({'id': way['id'], 'nodes': way['nds'], 'tags': way['tags']}
+                    for way in interventions['synthetic_ways'].values()))
     writer = osmium.SimpleWriter(output_file)
-    handler = TransformHandler(writer, interventions, strip_access=strip_access)
+    handler = TransformHandler(writer, interventions, strip_access=strip_access, parking_access=parking_access)
     try:
         handler.apply_file(input_file)
         handler.finish()
@@ -283,5 +299,7 @@ if __name__ == '__main__':
                        'setVersion': interventions['set_version'],
                        'snapshotSha256': interventions['snapshot_sha256'],
                        'rawPbfSha256': raw_sha, 'pbfSha256': file_digest(sys.argv[2]),
-                       'transformSha256': file_digest(__file__), 'stripAccessTags': strip}, target)
+                       'transformSha256': file_digest(__file__),
+                       'transformBundleSha256': legacy_bundle_digest(Path(__file__).parent),
+                       'stripAccessTags': strip}, target)
     sys.exit(0 if ok else 1)

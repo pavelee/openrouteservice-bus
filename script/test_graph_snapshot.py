@@ -138,6 +138,28 @@ class GraphSnapshotTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'changed'):
                 validate_build_inputs(source, receipt_file, map_file, transform)
 
+    def test_classic_receipt_detects_a_changed_helper(self):
+        from graph_patch_snapshot import validate_build_inputs, file_digest, legacy_bundle_digest, LEGACY_BUNDLE_FILES
+        snapshot = json.loads(FIXTURE.read_text())
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in LEGACY_BUNDLE_FILES:
+                (root / name).write_bytes((Path(__file__).parent / name).read_bytes())
+            map_file, source, receipt_file = [root / name for name in ('map.pbf', 'snapshot.json', 'receipt.json')]
+            transform = root / 'transform_osm.py'
+            map_file.write_bytes(b'map')
+            source.write_text(json.dumps(snapshot))
+            receipt = {'schema': 'route-quality-graph-transform-v1', 'setVersion': snapshot['setVersion'],
+                       'snapshotSha256': snapshot['snapshotSha256'], 'rawPbfSha256': 'a' * 64,
+                       'pbfSha256': file_digest(map_file), 'transformSha256': file_digest(transform),
+                       'transformBundleSha256': legacy_bundle_digest(root), 'stripAccessTags': True}
+            receipt_file.write_text(json.dumps(receipt))
+            self.assertEqual(validate_build_inputs(source, receipt_file, map_file, transform), receipt)
+            helper = root / 'terminal_parking_access.py'
+            helper.write_bytes(helper.read_bytes() + b'\n')
+            with self.assertRaisesRegex(ValueError, 'bundle changed'):
+                validate_build_inputs(source, receipt_file, map_file, transform)
+
     def test_blad_zapisu_nowego_eksportu_nie_powoduje_powrotu_do_starych_definicji(self):
         snapshot = json.loads(FIXTURE.read_text())
         with patch.dict(os.environ, {'CRON_SECRET': 'test', 'GRAPH_INTERVENTIONS_SNAPSHOT': '/missing-directory/snapshot.json'}), patch('transform_osm.urllib.request.urlopen') as response:

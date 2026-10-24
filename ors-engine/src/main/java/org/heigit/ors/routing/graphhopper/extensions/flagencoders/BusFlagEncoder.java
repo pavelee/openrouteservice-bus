@@ -92,7 +92,7 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
     private static final double BUS_MAX_LENGTH = 18.75; // metry (max autobus przegubowy w UE)
 
     // These service subtypes need explicit bus evidence.
-    private static final Set<String> NON_BUS_SERVICE_VALUES = Set.of("driveway", "drive-through");
+    private static final Set<String> NON_BUS_SERVICE_VALUES = Set.of("parking_aisle", "driveway", "drive-through");
 
     private static final int MEAN_SPEED = 50;
 
@@ -302,8 +302,7 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         boolean busAllowedHere = way.hasTag(busAccess, intendedValues);
         boolean dedicatedBusway = VAL_BUSWAY.equals(highwayValue) || VAL_BUS_GUIDEWAY.equals(highwayValue);
 
-        // Public parking aisles remain available without gaining bus preference.
-        // Driveways and drive-through lanes still require bus evidence.
+        // Unmarked parking aisles can shortcut bus terminals.
         //
         // Wyjątek `isOnBusRoute` dołożony 2026-08-15 (linia 735 / trasa 665221, kraniec Zegrze Płd. 03).
         // Przystanek końcowy stoi na parkingu, na który prowadzą DWA way'e highway=service +
@@ -337,8 +336,10 @@ public class BusFlagEncoder extends VehicleFlagEncoder {
         // 09..12 (43-52 m). Sweep 6237 słupków: nikt poza nimi się do niego nie dopina, żadna trasa
         // nie jedzie przez okienko. Zapis: notatki/traska/analizy/ors-drive-through-pomijanie-w-enkoderze.md.
         String serviceTag = way.getTag("service");
+        boolean terminalParkingAccess = "service".equals(highwayValue) && "parking_aisle".equals(serviceTag)
+                && way.hasTag("bus:parking_access", "terminal");
         if (serviceTag != null && NON_BUS_SERVICE_VALUES.contains(serviceTag)
-                && !busAllowedHere && !isOnBusRoute(way)) {
+                && !busAllowedHere && !isOnBusRoute(way) && !terminalParkingAccess) {
             return EncodingManager.Access.CAN_SKIP;
         }
 

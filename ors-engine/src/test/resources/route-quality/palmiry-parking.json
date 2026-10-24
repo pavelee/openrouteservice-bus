@@ -19,7 +19,8 @@
       "tags": {
         "highway": "service",
         "service": "parking_aisle",
-        "surface": "unpaved"
+        "surface": "unpaved",
+        "bus:parking_access": "terminal"
       }
     },
     {
@@ -31,7 +32,8 @@
       "tags": {
         "highway": "service",
         "service": "parking_aisle",
-        "surface": "grass_paver"
+        "surface": "grass_paver",
+        "bus:parking_access": "terminal"
       }
     },
     {
@@ -44,7 +46,8 @@
       "tags": {
         "highway": "service",
         "service": "parking_aisle",
-        "surface": "unpaved"
+        "surface": "unpaved",
+        "bus:parking_access": "terminal"
       }
     }
   ],
@@ -127,5 +130,6 @@
       "lon": 20.7763239,
       "tags": {}
     }
-  ]
+  ],
+  "compiledBy": "terminal_parking_access.TerminalParkingAccess"
 }

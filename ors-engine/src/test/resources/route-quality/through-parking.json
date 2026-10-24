@@ -1,0 +1,79 @@
+{
+  "rawPbfSha256": "3f7fae86900ca9a141418c3b7234abeb72016f4b99ce8de5e8d0f6c760a68c24",
+  "ways": [
+    {
+      "id": 248674689,
+      "nodes": [
+        2554323727,
+        9123115328,
+        2554323732
+      ],
+      "tags": {
+        "highway": "service",
+        "lit": "yes",
+        "service": "parking_aisle",
+        "surface": "paving_stones"
+      }
+    },
+    {
+      "id": 248674690,
+      "nodes": [
+        2554323726,
+        9123115329,
+        9123109237,
+        2554323731
+      ],
+      "tags": {
+        "highway": "service",
+        "lit": "yes",
+        "service": "parking_aisle",
+        "surface": "paving_stones"
+      }
+    },
+    {
+      "id": 248674691,
+      "nodes": [
+        2554323724,
+        9123109247,
+        9123109241,
+        7147997377
+      ],
+      "tags": {
+        "highway": "service",
+        "lit": "yes",
+        "service": "parking_aisle",
+        "surface": "paving_stones"
+      }
+    },
+    {
+      "id": 248674692,
+      "nodes": [
+        2554323725,
+        9123109232,
+        9123109238,
+        2554323730
+      ],
+      "tags": {
+        "highway": "service",
+        "lit": "yes",
+        "service": "parking_aisle",
+        "surface": "paving_stones"
+      }
+    },
+    {
+      "id": 248674693,
+      "nodes": [
+        2554323723,
+        9123109253,
+        9123109252,
+        320279171
+      ],
+      "tags": {
+        "highway": "service",
+        "lit": "yes",
+        "service": "parking_aisle",
+        "surface": "paving_stones"
+      }
+    }
+  ]
+}
