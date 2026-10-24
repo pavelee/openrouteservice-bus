@@ -4,7 +4,7 @@ from pathlib import Path
 
 from graph_patch_snapshot import digest, file_digest
 
-BUNDLE_FILES = ('graph_marker_transform.py', 'graph_marker_plan.py', 'graph_marker_policy.py', 'graph_patch_snapshot.py')
+BUNDLE_FILES = ('graph_marker_transform.py', 'graph_marker_plan.py', 'graph_marker_policy.py', 'graph_patch_snapshot.py', 'way_access_policy.py')
 
 
 def bundle_digest(directory):

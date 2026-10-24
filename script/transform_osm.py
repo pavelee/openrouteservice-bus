@@ -41,6 +41,7 @@ import time
 import urllib.request
 
 from graph_patch_snapshot import file_digest, read_snapshot, validate_snapshot
+from way_access_policy import should_strip_way_access
 
 import osmium
 from osmium.osm import mutable
@@ -188,9 +189,8 @@ class TransformHandler(osmium.SimpleHandler):
             self.stats['overridden'] += 1
 
         # 3. Strip access=private/no (STRIP_ACCESS_TAGS; Etap 4 = wyłączenie).
-        if self.strip_access:
-            stripped = [(k, v) for k, v in tags
-                        if not (k == 'access' and v in ('private', 'no'))]
+        if self.strip_access and should_strip_way_access(dict(tags)):
+            stripped = [(k, v) for k, v in tags if k != 'access']
             if len(stripped) != len(tags):
                 tags, changed = stripped, True
                 self.stats['access_stripped'] += 1

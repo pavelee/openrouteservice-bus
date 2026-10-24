@@ -9,6 +9,7 @@ from osmium.osm import mutable
 
 from graph_patch_snapshot import digest, validate_snapshot
 from graph_marker_policy import validate_policy
+from way_access_policy import should_strip_way_access
 
 MARKER_TAG = 'bus:quality_variant'
 ONLY_EXCLUDE_TAG = 'bus:quality_only_exclude'
@@ -269,7 +270,7 @@ class MarkerPlan:
         for entry in self.overrides_by_way.get(identity, ()):
             if self.enabled(entry['interventionId'], active):
                 result.update(entry['tagOverride']['setTags'])
-        if self.strip_access and result.get('access') in ('private', 'no'):
+        if self.strip_access and should_strip_way_access(result):
             del result['access']
         if self.snapshot['busRouteWayIdsAvailable'] and str(identity) in self.bus_ways and not blocked and 'highway' in result:
             result.setdefault('bus:on_route', 'yes')
