@@ -60,6 +60,11 @@ public class RoutingRequest extends ServiceRequest {
     private int extraInfo;
     private int locationIndex = -1;
     private boolean continueStraight = false;
+    private List<Integer> continueStraightExceptions = List.of();
+
+    public void setContinueStraightExceptions(List<Integer> indices) {
+        continueStraightExceptions = List.copyOf(indices);
+    }
     private List<Integer> skipSegments = new ArrayList<>();
     private boolean includeCountryInfo = false;
     private double maximumSpeed;
@@ -421,7 +426,7 @@ public class RoutingRequest extends ServiceRequest {
     }
 
     private GHResponse computeRoute(double lat0, double lon0, double lat1, double lon1, WayPointBearing[] bearings,
-                                   double[] radiuses, boolean directedSegment, RouteSearchParameters searchParams, Boolean geometrySimplify, RoutingProfile routingProfile)
+                                   double[] radiuses, boolean directedSegment, RouteSearchParameters searchParams, Boolean geometrySimplify, RoutingProfile routingProfile, Integer incomingEdgeKey, Integer targetEdgeKey)
             throws Exception {
 
         GHResponse resp;
@@ -542,6 +547,12 @@ public class RoutingRequest extends ServiceRequest {
                 req.getHints().putObject("maximum_speed", searchParams.getMaximumSpeed());
                 req.getHints().putObject("maximum_speed_lower_bound", routingProfile.getProfileConfiguration().getBuild().getMaximumSpeedLowerBound());
             }
+
+            boolean trackContinuity = logicalContinuity || getContinueStraight() && getCoordinates().length > 2;
+            req.putHint("ors.continuity_track", trackContinuity);
+            if (incomingEdgeKey != null) req.putHint("ors.continuity_incoming", incomingEdgeKey);
+            if (targetEdgeKey != null) req.putHint("ors.continuity_target", targetEdgeKey);
+            if (trackContinuity) setSpeedups(req, false, false, false, searchCntx.profileNameCH());
 
             if (directedSegment) {
                 resp = gh.constructFreeHandRoute(req);
@@ -713,6 +724,96 @@ public class RoutingRequest extends ServiceRequest {
         }
     }
 
+    private boolean logicalContinuity;
+    private List<GHResponse> precomputedLegs;
+
+    public static List<RouteResult[]> computeLogicalRoutes(List<RoutingRequest> requests, List<Integer> exceptions) throws Exception {
+        for (RoutingRequest request : requests) request.logicalContinuity = true;
+        List<GHResponse> legs = computeJointStates(requests, exceptions);
+        List<RouteResult[]> results = new ArrayList<>();
+        int offset = 0;
+        for (RoutingRequest request : requests) {
+            int count = request.getCoordinates().length - 1;
+            request.precomputedLegs = legs.subList(offset, offset + count);
+            results.add(request.computeLinearRoute());
+            offset += count;
+        }
+        return results;
+    }
+
+    private record ContinuationState(Integer incoming, double cost, List<GHResponse> legs) {}
+
+    private List<GHResponse> computeJointLegs(RoutingProfile rp, RouteSearchParameters searchParams) throws Exception {
+        return computeJointStates(List.of(this), continueStraightExceptions);
+    }
+
+    private static List<GHResponse> computeJointStates(List<RoutingRequest> requests, List<Integer> exceptions) throws Exception {
+        List<ContinuationState> states = List.of(new ContinuationState(null, 0, List.of()));
+        int offset = 0;
+        for (int group = 0; group < requests.size(); group++) {
+            RoutingRequest owner = requests.get(group);
+            Coordinate[] coords = owner.getCoordinates();
+            RoutingProfile rp = owner.profile();
+            RouteSearchParameters searchParams = owner.getSearchParameters();
+            for (int i = 1; i < coords.length; i++) {
+                Map<Integer, ContinuationState> next = new java.util.LinkedHashMap<>();
+                GHResponse failure = null;
+                for (ContinuationState state : states) {
+                    WayPointBearing[] bearings = new WayPointBearing[2];
+                    if (!state.legs().isEmpty() && !exceptions.contains(offset + i - 1))
+                        bearings[0] = new WayPointBearing(owner.getHeadingDirection(state.legs().get(state.legs().size() - 1)));
+                    if (searchParams.getBearings() != null) {
+                        bearings[0] = searchParams.getBearings()[i - 1];
+                        bearings[1] = i == coords.length - 1 && searchParams.getBearings().length != coords.length
+                                ? new WayPointBearing(Double.NaN) : searchParams.getBearings()[i];
+                    }
+                    double[] radiuses = searchParams.getMaximumRadiuses() == null
+                            ? new double[]{rp.getProfileConfiguration().getService().getMaximumSnappingRadius(),
+                                           rp.getProfileConfiguration().getService().getMaximumSnappingRadius()}
+                            : new double[]{searchParams.getMaximumRadiuses()[i - 1], searchParams.getMaximumRadiuses()[i]};
+                    boolean skipped = owner.getSkipSegments().contains(i);
+                    Integer incoming = !exceptions.contains(offset + i - 1) && !skipped
+                            && !owner.getSkipSegments().contains(i - 1) ? state.incoming() : null;
+                    Coordinate a = coords[i - 1], b = coords[i];
+                    GHResponse unconstrained = owner.computeRoute(a.y, a.x, b.y, b.x, bearings, radiuses, skipped,
+                            searchParams, owner.getGeometrySimplify(), rp, incoming, null);
+                    failure = unconstrained;
+                    List<GHResponse> alternatives = new ArrayList<>();
+                    if (!unconstrained.hasErrors()) alternatives.add(unconstrained);
+                    boolean reset = (group == requests.size() - 1 && i == coords.length - 1) || exceptions.contains(offset + i) || skipped;
+                    if (!reset) {
+                        List<Integer> targets = unconstrained.getHints().getObject("ors.continuity_targets", List.of());
+                        Integer bestKey = unconstrained.getHints().getObject("ors.continuity_last", null);
+                        for (Integer target : targets) {
+                            if (target.equals(bestKey)) continue;
+                            GHResponse alternative = owner.computeRoute(a.y, a.x, b.y, b.x, bearings, radiuses, false,
+                                    searchParams, owner.getGeometrySimplify(), rp, incoming, target);
+                            if (!alternative.hasErrors()) alternatives.add(alternative);
+                        }
+                    }
+                    for (GHResponse response : alternatives) {
+                        Integer key = reset ? null : response.getHints().getObject("ors.continuity_last", incoming);
+                        double cost = state.cost() + response.getHints().getDouble("ors.continuity_weight", 0);
+                        var previous = next.get(key);
+                        if (previous == null || cost < previous.cost()) {
+                            List<GHResponse> legs = new ArrayList<>(state.legs());
+                            legs.add(response);
+                            next.put(key, new ContinuationState(key, cost, legs));
+                        }
+                    }
+                }
+                if (next.isEmpty()) {
+                    throw new RouteNotFoundException(RoutingErrorCodes.ROUTE_NOT_FOUND,
+                            "No legal logical-route continuation at group " + group + ", leg " + i
+                                    + ": " + (failure == null ? "no candidates" : failure.getErrors()));
+                }
+                states = new ArrayList<>(next.values());
+            }
+            offset += coords.length - 1;
+        }
+        return states.stream().min(java.util.Comparator.comparingDouble(ContinuationState::cost)).orElseThrow().legs();
+    }
+
     private RouteResult[] computeLinearRoute() throws Exception {
         List<Integer> skipSegments = getSkipSegments();
         List<GHResponse> routes = new ArrayList<>();
@@ -725,6 +826,7 @@ public class RoutingRequest extends ServiceRequest {
         Coordinate c1;
         int nSegments = coords.length - 1;
         GHResponse prevResp = null;
+        Integer incomingEdgeKey = null;
         WayPointBearing[] bearings = (getContinueStraight() || searchParams.getBearings() != null) ? new WayPointBearing[2] : null;
         String profileName = getSearchParameters().getProfileName();
         double[] radiuses = null;
@@ -736,12 +838,14 @@ public class RoutingRequest extends ServiceRequest {
         int numberOfExpectedExtraInfoProcessors = getSearchParameters().getAlternativeRoutesCount() < 0 ? 1 : getSearchParameters().getAlternativeRoutesCount();
         ExtraInfoProcessor[] extraInfoProcessors = new ExtraInfoProcessor[numberOfExpectedExtraInfoProcessors];
 
+        List<GHResponse> jointLegs = precomputedLegs != null ? precomputedLegs : getContinueStraight() && coords.length > 2
+                ? computeJointLegs(rp, searchParams) : null;
         for (int i = 1; i <= nSegments; ++i) {
             c1 = coords[i];
 
             if (bearings != null) {
                 bearings[0] = null;
-                if (prevResp != null && getContinueStraight()) {
+                if (prevResp != null && getContinueStraight() && !continueStraightExceptions.contains(i - 1)) {
                     bearings[0] = new WayPointBearing(getHeadingDirection(prevResp));
                 }
 
@@ -766,7 +870,11 @@ public class RoutingRequest extends ServiceRequest {
                 }
             }
 
-            GHResponse gr = computeRoute(c0.y, c0.x, c1.y, c1.x, bearings, radiuses, skipSegments.contains(i), searchParams, getGeometrySimplify(), rp);
+            Integer continuation = getContinueStraight() && !continueStraightExceptions.contains(i - 1)
+                    && !skipSegments.contains(i) && !skipSegments.contains(i - 1) ? incomingEdgeKey : null;
+            GHResponse gr = jointLegs != null ? jointLegs.get(i - 1) : computeRoute(c0.y, c0.x, c1.y, c1.x,
+                    bearings, radiuses, skipSegments.contains(i), searchParams, getGeometrySimplify(), rp, continuation, null);
+            incomingEdgeKey = gr.getHints().getObject("ors.continuity_last", null);
 
             if (gr.hasErrors()) {
                 if (!gr.getErrors().isEmpty()) {

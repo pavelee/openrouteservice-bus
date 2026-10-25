@@ -143,11 +143,51 @@ public class RoutingService extends ApiService {
         }
     }
 
+    public List<RouteResult[]> generateLogicalRoute(List<RouteRequest> groups, List<Integer> exceptions) throws Exception {
+        if (groups == null || groups.isEmpty() || groups.size() > 64 || exceptions == null)
+            throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "logical_route");
+        List<RoutingRequest> requests = new java.util.ArrayList<>();
+        int count = 1;
+        Coordinate previous = null;
+        for (RouteRequest group : groups) {
+            if (group == null || !Boolean.TRUE.equals(group.getContinueStraightAtWaypoints()) || !group.hasCustomModel())
+                throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "logical_route.groups");
+            RoutingRequest request = convertRouteRequest(group);
+            RoutingProfile profile = parseRoutingProfile(group.getProfileName());
+            request.setRoutingProfile(profile);
+            request.getSearchParameters().setGraphMarkerSelection(GraphMarkerHeader.validate(
+                    profile.getGraphhopper().getGraphHopperStorage(), group.getGraphMarkerSelection(), RoutingErrorCodes.INVALID_PARAMETER_VALUE));
+            validateRouteProfileForRequest(request);
+            if (Boolean.FALSE.equals(profile.getProfileProperties().getBuild().getEncoderOptions().getEnableCustomModels())
+                    || Boolean.FALSE.equals(profile.getProfileProperties().getService().getAllowCustomModels()))
+                throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "custom_model");
+            if (!request.getSkipSegments().isEmpty() || request.getSearchParameters().getAlternativeRoutesCount() > 1
+                    || request.getSearchParameters().getRoundTripLength() > 0 || request.getSearchParameters().isTimeDependent()
+                    || !group.getContinueStraightExceptions().isEmpty())
+                throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "logical_route.unsupported_options");
+            Coordinate[] coords = request.getCoordinates();
+            if (previous != null && !previous.equals2D(coords[0]))
+                throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "logical_route.group_join");
+            previous = coords[coords.length - 1];
+            count += coords.length - 1;
+            requests.add(request);
+        }
+        final int total = count;
+        if (exceptions.stream().anyMatch(i -> i == null || i <= 0 || i >= total - 1))
+            throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "logical_route.exceptions");
+        if (count == 2) return java.util.Collections.singletonList(requests.get(0).computeRoute());
+        return RoutingRequest.computeLogicalRoutes(requests, exceptions);
+    }
+
     public RoutingRequest convertRouteRequest(RouteRequest routeApiRequest) throws StatusCodeException {
         RoutingRequest routingRequest = new RoutingRequest();
         boolean isRoundTrip = routeApiRequest.hasRouteOptions() && routeApiRequest.getRouteOptions().hasRoundTripOptions();
         routingRequest.setCoordinates(convertCoordinates(routeApiRequest.getCoordinates(), isRoundTrip));
         routingRequest.setGeometryFormat(convertGeometryFormat(routeApiRequest.getResponseType()));
+        List<Integer> exceptions = routeApiRequest.getContinueStraightExceptions();
+        if (exceptions == null || exceptions.stream().anyMatch(i -> i == null || i <= 0 || i >= routingRequest.getCoordinates().length - 1))
+            throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "continue_straight_exceptions");
+        routingRequest.setContinueStraightExceptions(exceptions);
 
         if (routeApiRequest.hasUseElevation())
             routingRequest.setIncludeElevation(routeApiRequest.getUseElevation());

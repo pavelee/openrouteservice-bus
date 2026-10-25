@@ -167,6 +167,30 @@ public class RoutingAPI {
         return new JSONRouteResponse(result, request, systemMessageProperties, endpointsProperties);
     }
 
+    public record LogicalRouteRequest(java.util.List<RouteRequest> groups, java.util.List<Integer> exceptions) {}
+
+    public record LogicalRouteResponse(java.util.List<JSONRouteResponse> groups,
+            org.heigit.ors.api.responses.routing.RouteResponseInfo metadata) {}
+
+    @PostMapping(value = "/{profile}/logical", produces = "application/json;charset=UTF-8")
+    public LogicalRouteResponse getLogicalRoute(@PathVariable String profile,
+            @RequestBody LogicalRouteRequest request) throws Exception {
+        if (request.groups() == null)
+            throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "groups");
+        for (RouteRequest group : request.groups()) {
+            if (group == null) throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "group");
+            group.setProfile(getProfileEnum(profile));
+            group.setProfileName(profile);
+            group.setResponseType(APIEnums.RouteResponseType.JSON);
+            group.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, RoutingErrorCodes.INVALID_PARAMETER_VALUE));
+        }
+        var results = routingService.generateLogicalRoute(request.groups(), request.exceptions());
+        java.util.List<JSONRouteResponse> responses = new java.util.ArrayList<>();
+        for (int i = 0; i < results.size(); i++)
+            responses.add(new JSONRouteResponse(results.get(i), request.groups().get(i), systemMessageProperties, endpointsProperties));
+        return new LogicalRouteResponse(responses, responses.get(0).getInfo());
+    }
+
     @PostMapping(value = "/{profile}/gpx", produces = "application/gpx+xml;charset=UTF-8")
     @Operation(
             description = "Returns a route between two or more locations for a selected profile and its settings as GPX. The schema can be found [here](https://raw.githubusercontent.com/GIScience/openrouteservice-schema/main/gpx/v1/ors-gpx.xsd)",

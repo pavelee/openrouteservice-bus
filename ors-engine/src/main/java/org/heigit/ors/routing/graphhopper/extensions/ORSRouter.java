@@ -43,6 +43,7 @@ public class ORSRouter extends Router {
     private static final Logger LOGGER = LoggerFactory.getLogger(ORSRouter.class);
     private static final ObjectMapper DIAGNOSTIC_JSON = new ObjectMapper();
     private final HeadingAwareLocationIndex headingIndex;
+    private final LocationIndex originalIndex;
     private final GraphHopperStorage ghStorage;
     private final EncodingManager encodingManager;
     private final Map<String, Profile> profilesByName;
@@ -52,8 +53,9 @@ public class ORSRouter extends Router {
     private Map<String, PrepareCoreLandmarks> coreLandmarks;
 
     public ORSRouter(GraphHopperStorage ghStorage, LocationIndex locationIndex, Map<String, Profile> profilesByName, PathDetailsBuilderFactory pathDetailsBuilderFactory, TranslationMap translationMap, RouterConfig routerConfig, WeightingFactory weightingFactory, Map<String, RoutingCHGraph> chGraphs, Map<String, LandmarkStorage> landmarks) {
-        super(ghStorage, locationIndex, profilesByName, pathDetailsBuilderFactory, translationMap, routerConfig, weightingFactory, chGraphs, landmarks);
+        super(ghStorage, new org.heigit.ors.routing.graphhopper.extensions.continuity.ContinuityLocationIndex(locationIndex, ghStorage), profilesByName, pathDetailsBuilderFactory, translationMap, routerConfig, weightingFactory, chGraphs, landmarks);
         this.ghStorage = ghStorage;
+        this.originalIndex = locationIndex;
         this.encodingManager = ghStorage.getEncodingManager();
         this.profilesByName = profilesByName;
         this.routerConfig = routerConfig;
@@ -63,6 +65,19 @@ public class ORSRouter extends Router {
 
     @Override
     public GHResponse route(GHRequest request) {
+        try (var scope = org.heigit.ors.routing.graphhopper.extensions.continuity.ContinuityLocationIndex.begin(request)) {
+            GHResponse response = routeWithHeading(request);
+            Integer last = request.getHints().getObject("ors.continuity_last", null);
+            if (last != null) response.getHints().putObject("ors.continuity_last", last);
+            for (String hint : java.util.List.of("ors.continuity_targets", "ors.continuity_weight")) {
+                Object value = request.getHints().getObject(hint, null);
+                if (value != null) response.getHints().putObject(hint, value);
+            }
+            return response;
+        }
+    }
+
+    private GHResponse routeWithHeading(GHRequest request) {
         if (headingIndex == null) return super.route(request);
         try (HeadingAwareLocationIndex.Scope scope = headingIndex.begin(request)) {
             GHResponse response = super.route(request);
@@ -93,6 +108,9 @@ public class ORSRouter extends Router {
 
     @Override
     protected Router.Solver createSolver(GHRequest request, EdgeFilterFactory edgeFilterFactory) {
+        if (request.getHints().getBool("ors.continuity_track", false))
+            return new com.graphhopper.routing.WaypointContinuitySolver(request, profilesByName, routerConfig,
+                    encodingManager, weightingFactory, ghStorage, originalIndex).setEdgeFilterFactory(edgeFilterFactory);
         boolean disableCore = getDisableCore(request.getHints());
         if (!disableCore) {
             return new ORSRouter.CoreSolver(request, this.profilesByName, this.routerConfig, this.encodingManager, this.weightingFactory, this.ghStorage, this.coreGraphs, this.coreLandmarks).setEdgeFilterFactory(edgeFilterFactory);

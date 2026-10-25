@@ -76,6 +76,7 @@ public class StatusAPI {
                 if (endpointsProperties.getSnap().isEnabled())
                     list.add("snap");
                 jInfo.put("services", list);
+                jInfo.put("waypoint_continuity", "logical-groups-v1");
                 jInfo.put("languages", LocalizationManager.getInstance().getLanguages());
 
                 JSONObject jProfiles = new JSONObject(true);

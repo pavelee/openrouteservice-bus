@@ -45,7 +45,7 @@ public final class DirectedGraphWindow {
                     filter.accept(edge) && snapFilter.accept(edge));
             if (!snap.isValid() || snap.getQueryDistance() > 5)
                 throw new IllegalArgumentException("Service direction snap exceeds 5 metres");
-            snaps.add(snap);
+            snaps.add(org.heigit.ors.routing.graphhopper.extensions.continuity.GraphPrecisionSnap.normalize(snap, storage));
         }
         var graph = QueryGraph.create(storage.getBaseGraph(), snaps);
         Weighting queryWeighting = graph.wrapWeighting(weighting);

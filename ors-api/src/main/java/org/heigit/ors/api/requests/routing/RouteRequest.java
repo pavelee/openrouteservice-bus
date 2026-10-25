@@ -174,6 +174,17 @@ public class RouteRequest extends APIRequest implements RouteRequestParameterNam
     @JsonIgnore
     private boolean hasContinueStraightAtWaypoints = false;
 
+    @JsonProperty("continue_straight_exceptions")
+    private List<Integer> continueStraightExceptions = new java.util.ArrayList<>();
+
+    public List<Integer> getContinueStraightExceptions() {
+        return continueStraightExceptions;
+    }
+
+    public void setContinueStraightExceptions(List<Integer> indices) {
+        continueStraightExceptions = indices;
+    }
+
     @Schema(name = PARAM_ELEVATION,
             description = "Specifies whether to return elevation values for points. Please note that elevation also gets encoded for json response encoded polyline.",
             example = "false")
