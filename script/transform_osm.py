@@ -41,7 +41,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from graph_patch_snapshot import file_digest, read_snapshot, validate_snapshot, legacy_bundle_digest
+from graph_patch_snapshot import file_digest, read_snapshot, validate_snapshot, legacy_bundle_digest, synthetic_nodes
 from way_access_policy import should_strip_way_access
 from terminal_parking_access import TerminalParkingAccess, PARKING_ACCESS_TAG
 
@@ -81,6 +81,7 @@ def _merge_export(payload):
                          if payload.get('busRouteWayIdsAvailable') else set())
     return {
         'synthetic_ways': ways,
+        'synthetic_nodes': synthetic_nodes(payload),
         'block_way_ids': block_way_ids,
         'tag_overrides': tag_overrides,
         'node_tag_overrides': node_tag_overrides,
@@ -150,6 +151,11 @@ class TransformHandler(osmium.SimpleHandler):
         self.strip_access = strip_access
         self.parking_access = parking_access
         self.synthetic_written = False
+        self.synthetic_nodes_written = False
+        self.synthetic_existing_nodes = {
+            int(identity) for way in interventions['synthetic_ways'].values() for identity in way['nds']
+            if int(identity) not in interventions.get('synthetic_nodes', {})}
+        self.synthetic_seen_nodes = set()
         # Guard na reprocessing: way'e syntetyczne obecne w wejściu nie są
         # wstrzykiwane ponownie (duplikat ID).
         self.synthetic_in_input = set()
@@ -157,6 +163,10 @@ class TransformHandler(osmium.SimpleHandler):
                       'access_stripped': 0, 'on_route': 0, 'relations_skipped': 0}
 
     def node(self, n):
+        if n.id in self.iv.get('synthetic_nodes', {}):
+            raise ValueError('Synthetic node identifier collides with the raw map')
+        if n.id in self.synthetic_existing_nodes:
+            self.synthetic_seen_nodes.add(n.id)
         # TAG_OVERRIDE na węźle: ta sama semantyka "set" co dla way'a. Potrzebne dla
         # barier, bo strip access działa tylko na way'ach, a szlaban z access=private
         # enkoder przepuszcza wyłącznie z bus/psv (BusFlagEncoder.handleNodeTags).
@@ -170,7 +180,16 @@ class TransformHandler(osmium.SimpleHandler):
             return
         self.w.add_node(n)
 
+    def _write_synthetic_nodes(self):
+        if not self.synthetic_nodes_written:
+            if self.synthetic_existing_nodes - self.synthetic_seen_nodes:
+                raise ValueError('Missing synthetic anchor in the raw map')
+            for node in sorted(self.iv.get('synthetic_nodes', {}).values(), key=lambda item: item['id']):
+                self.w.add_node(mutable.Node(id=node['id'], location=node['location'], tags=node['tags']))
+            self.synthetic_nodes_written = True
+
     def way(self, w):
+        self._write_synthetic_nodes()
         self.stats['ways'] += 1
         way_id = str(w.id)
         if way_id in self.iv['synthetic_ways']:
@@ -229,6 +248,7 @@ class TransformHandler(osmium.SimpleHandler):
         self.w.add_relation(r)
 
     def _write_synthetic_ways(self):
+        self._write_synthetic_nodes()
         for sw in self.iv['synthetic_ways'].values():
             if sw['id'] in self.synthetic_in_input:
                 print(f"Skip synthetic way {sw['id']} — już obecny w pliku wejściowym")

@@ -1,0 +1,55 @@
+{
+  "schema": "route-quality-graph-snapshot-v2",
+  "setVersion": "rq-graph-v2:3f6018f504c054f10ca62cc281def77fcbc2ce4e16092a39cd1327d185d83a6f",
+  "entryFingerprints": [
+    {
+      "interventionId": 10010,
+      "kind": "SYNTHETIC_WAY",
+      "fingerprint": "d084ac1e0f30c99b95503886d34e50ce649209e8c74e323f05b477d2e94d012f"
+    }
+  ],
+  "syntheticWays": [
+    {
+      "interventionId": 10010,
+      "graphState": "PENDING",
+      "wayDef": {
+        "id": "9999000010",
+        "nds": [
+          "2",
+          "9999000011",
+          "9999000012",
+          "2"
+        ],
+        "tags": {
+          "highway": "service",
+          "oneway": "yes",
+          "bus": "yes"
+        },
+        "nodes": [
+          {
+            "id": "9999000011",
+            "lat": 52.2389,
+            "lon": 20.8995
+          },
+          {
+            "id": "9999000012",
+            "lat": 52.2389,
+            "lon": 20.8997
+          }
+        ]
+      }
+    }
+  ],
+  "wayBlocks": [],
+  "tagOverrides": [],
+  "relationSkips": [],
+  "busRouteWayIds": [],
+  "busRouteWayIdsAvailable": false,
+  "markerChannels": {
+    "officialInterventionIds": [],
+    "qualityInterventionIds": [
+      10010
+    ]
+  },
+  "snapshotSha256": "0c14928c78d30919f1698c1e335049e0d116b30762843086a898b3ff648dbf1e"
+}

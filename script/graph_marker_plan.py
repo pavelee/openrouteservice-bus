@@ -7,7 +7,7 @@ from itertools import product
 import osmium
 from osmium.osm import mutable
 
-from graph_patch_snapshot import digest, validate_snapshot
+from graph_patch_snapshot import digest, validate_snapshot, synthetic_nodes
 from graph_marker_policy import validate_policy
 from way_access_policy import should_strip_way_access
 from terminal_parking_access import TerminalParkingAccess, PARKING_ACCESS_TAG
@@ -58,6 +58,7 @@ class MarkerPlan:
         self.ways, self.nodes, self.relations = {}, {}, {}
         self.max_ids = {'node': 0, 'way': 0, 'relation': 0}
         self.synthetic = {}
+        self.synthetic_nodes = synthetic_nodes(snapshot)
         self.skip_relations = {int(identity) for entry in snapshot['relationSkips'] for identity in entry['relationIds']}
         for entry in snapshot['wayBlocks']:
             if entry['interventionId'] not in self.official:
@@ -86,6 +87,8 @@ class MarkerPlan:
 
         class Direct(osmium.SimpleHandler):
             def node(self, node):
+                if node.id in plan.synthetic_nodes:
+                    raise ValueError('Synthetic node identifier collides with the raw map')
                 plan.max_ids['node'] = max(plan.max_ids['node'], node.id)
                 if MARKER_TAG in node.tags:
                     raise ValueError('Reserved graph marker tag in the raw map')
@@ -109,6 +112,8 @@ class MarkerPlan:
                     plan.relations[relation.id] = {'id': relation.id, 'members': [(m.type, m.ref, m.role) for m in relation.members], 'tags': dict(relation.tags)}
 
         Direct().apply_file(self.source)
+        self.raw_node_max = self.max_ids['node']
+        self.max_ids['node'] = max([self.raw_node_max, *self.synthetic_nodes])
         missing = set(self.way_dependencies) - set(self.ways) - set(self.synthetic)
         if missing:
             raise ValueError('Missing quality graph ways: ' + ','.join(map(str, sorted(missing))))
@@ -144,6 +149,7 @@ class MarkerPlan:
                     plan.ways.setdefault(way.id, plan.copy_way(way))
 
         References().apply_file(self.source)
+        self.nodes.update(self.synthetic_nodes)
         if self.candidates - set(self.nodes):
             raise ValueError('Missing graph marker nodes')
         self.reference_ways.update(self.synthetic)
@@ -160,7 +166,6 @@ class MarkerPlan:
         for way in self.synthetic.values():
             for node in set(way['nodes']):
                 self.incident[node].add(way['id'])
-        self.raw_node_max = self.max_ids['node']
         self.node_variants, self.way_variants = {}, {}
         for identity, way in self.synthetic.items():
             for node in way['nodes']:
@@ -359,7 +364,10 @@ class MarkerPlan:
             def extra(self):
                 if not self.extra_nodes:
                     for identity, node in sorted(plan.nodes.items()):
-                        if identity > self.raw_node_max:
+                        if identity in plan.synthetic_nodes:
+                            for active, projected in plan.node_variants.get(identity, {(): identity}).items():
+                                writer.add_node(mutable.Node(id=projected, location=node['location'], tags=plan.node_tags(identity, active, node['tags'])))
+                        elif identity > self.raw_node_max:
                             writer.add_node(mutable.Node(id=identity, location=node['location'], tags=plan.node_tags(node['originalId'], node.get('active', ()), node['tags'])))
                     self.extra_nodes = True
 

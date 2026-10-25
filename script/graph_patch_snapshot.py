@@ -1,6 +1,7 @@
 """Validate the versioned graph input without loading the map engine."""
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 
@@ -49,6 +50,7 @@ def validate_snapshot(payload):
     seen = set()
     override_values = {}
     synthetic_values = {}
+    declared_nodes = {}
     for collection, kind in [('syntheticWays', 'SYNTHETIC_WAY'), ('wayBlocks', 'WAY_BLOCK'),
                              ('tagOverrides', 'TAG_OVERRIDE'), ('relationSkips', 'RELATION_SKIP')]:
         entries = payload.get(collection)
@@ -67,6 +69,26 @@ def validate_snapshot(payload):
                 if len(definition['nds']) < 2:
                     raise ValueError('Invalid synthetic way')
                 tags(definition['tags'])
+                nodes = definition.get('nodes', [])
+                if not isinstance(nodes, list):
+                    raise ValueError('Invalid synthetic nodes')
+                local = set()
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        raise ValueError('Invalid synthetic node')
+                    identifiers([node.get('id')])
+                    node_id = node['id']
+                    lat, lon = node.get('lat'), node.get('lon')
+                    if (type(lat) not in (int, float) or type(lon) not in (int, float)
+                            or not math.isfinite(lat) or not math.isfinite(lon)
+                            or abs(lat) > 90 or abs(lon) > 180 or node_id in local
+                            or node_id not in definition['nds']):
+                        raise ValueError('Invalid synthetic node')
+                    local.add(node_id)
+                    location = (lat, lon)
+                    if node_id in declared_nodes and declared_nodes[node_id] != location:
+                        raise ValueError('Conflicting synthetic node')
+                    declared_nodes[node_id] = location
                 if definition['id'] in synthetic_values and synthetic_values[definition['id']] != digest(definition):
                     raise ValueError('Conflicting synthetic way')
                 synthetic_values[definition['id']] = digest(definition)
@@ -90,6 +112,9 @@ def validate_snapshot(payload):
                             override_values[target] = value
                 definition = {'wayIds': normalized_ids(ways), 'nodeIds': normalized_ids(nodes), 'setTags': override['setTags']}
             fingerprints.append({'interventionId': identity, 'kind': kind, 'fingerprint': digest({'kind': kind, 'definition': definition})})
+    if any(all(identity in declared_nodes for identity in entry['wayDef']['nds'])
+           for entry in payload['syntheticWays']):
+        raise ValueError('Synthetic nodes require an existing anchor')
     fingerprints.sort(key=lambda entry: entry['interventionId'])
     version = 'rq-graph-v1:' + digest(fingerprints)
     if payload['schema'] == 'route-quality-graph-snapshot-v2':
@@ -197,3 +222,8 @@ def classic_snapshot(snapshot, mode):
     body['entryFingerprints'] = [entry for entry in snapshot['entryFingerprints'] if entry['interventionId'] in kept]
     body['setVersion'] = 'rq-graph-v1:' + digest(body['entryFingerprints'])
     return validate_snapshot({**body, 'snapshotSha256': digest(body)})
+
+
+def synthetic_nodes(snapshot):
+    return {int(node['id']): {'id': int(node['id']), 'location': (node['lon'], node['lat']), 'tags': {}}
+            for entry in snapshot.get('syntheticWays', []) for node in entry['wayDef'].get('nodes', [])}
