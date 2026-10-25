@@ -35,9 +35,17 @@ class WaypointContinuitySolverTest {
     }
 
     private ORSRouter router(GraphHopperStorage graph, LocationIndexTree index) {
+        return router(graph, index, new DefaultWeightingFactory(graph, graph.getEncodingManager()));
+    }
+
+    private ORSRouter router(GraphHopperStorage graph, LocationIndexTree index, WeightingFactory factory) {
+        return router(graph, index, factory, new RouterConfig());
+    }
+
+    private ORSRouter router(GraphHopperStorage graph, LocationIndexTree index, WeightingFactory factory, RouterConfig config) {
         var profile = new Profile("car").setVehicle("car").setWeighting("shortest").setTurnCosts(true);
         return new ORSRouter(graph,index,Map.of("car",profile),new PathDetailsBuilderFactory(),
-                new TranslationMap().doImport(),new RouterConfig(),new DefaultWeightingFactory(graph,graph.getEncodingManager()),Map.of(),Map.of());
+                new TranslationMap().doImport(),config,factory,Map.of(),Map.of());
     }
 
     private GHRequest request(double from, double to, Integer incoming) {
@@ -139,6 +147,114 @@ class WaypointContinuitySolverTest {
                 var next = router.route(request(21.001,21.0002,1));
                 assertFalse(next.hasErrors());
                 assertTrue(next.getBest().getDistance()<100);
+            } finally { index.close(); }
+        }
+    }
+
+    @Test void repeatedWaypointRetainsArrivalWithoutAddingATurn() {
+        try (var graph = graph(true)) {
+            var index = new LocationIndexTree(graph, graph.getDirectory());
+            try {
+                index.prepareIndex(); var router = router(graph, index);
+                var first = router.route(request(21.0002, 21.001, null));
+                Integer incoming = first.getHints().getObject("ors.continuity_last", null);
+                var repeated = router.route(request(21.001, 21.001, incoming));
+                assertFalse(repeated.hasErrors(), repeated.getErrors().toString());
+                assertEquals(0, repeated.getBest().getDistance());
+                assertEquals(incoming, repeated.getHints().getObject("ors.continuity_last", null));
+                var continuation = router.route(request(21.001, 21.0002, incoming));
+                assertFalse(continuation.hasErrors());
+                assertTrue(continuation.getBest().getDistance() > 400);
+            } finally { index.close(); }
+        }
+    }
+
+    @Test void separateSearchesConsumeOneSharedBudget() {
+        try (var graph = graph(true)) {
+            var index = new LocationIndexTree(graph, graph.getDirectory());
+            try {
+                index.prepareIndex(); var router = router(graph, index);
+                var budget = new WaypointContinuityBudget(1000);
+                for (int i = 0; i < 2; i++) {
+                    int before = budget.remaining();
+                    var request = request(21.0002, 21.001, null);
+                    request.putHint(WaypointContinuityBudget.HINT, budget);
+                    var result = router.route(request);
+                    assertFalse(result.hasErrors());
+                    int visits = result.getHints().getInt("visited_nodes.sum", 0);
+                    assertTrue(visits > 0);
+                    assertEquals(before - visits, budget.remaining());
+                }
+                var limited = request(21.0002, 21.001, null);
+                limited.putHint(WaypointContinuityBudget.HINT, new WaypointContinuityBudget(1));
+                assertThrows(WaypointContinuityBudget.Exhausted.class, () -> router.route(limited));
+            } finally { index.close(); }
+        }
+    }
+
+    @Test void interruptionStopsTheSolverAndKeepsTheInterruptFlag() {
+        try (var graph = graph(true)) {
+            var index = new LocationIndexTree(graph, graph.getDirectory());
+            try {
+                index.prepareIndex(); var router = router(graph, index);
+                Thread.currentThread().interrupt();
+                assertThrows(java.util.concurrent.CancellationException.class,
+                        () -> router.route(request(21.0002, 21.001, null)));
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally { Thread.interrupted(); index.close(); }
+        }
+    }
+
+    @Test void interruptionDuringWeightEvaluationStopsTheSearch() {
+        try (var graph = graph(true)) {
+            var index = new LocationIndexTree(graph, graph.getDirectory());
+            try {
+                index.prepareIndex();
+                var original = new DefaultWeightingFactory(graph, graph.getEncodingManager());
+                WeightingFactory interrupting = (profile, hints, disableTurnCosts) ->
+                        new com.graphhopper.routing.weighting.AbstractAdjustedWeighting(
+                                original.createWeighting(profile, hints, disableTurnCosts)) {
+                            @Override public double calcEdgeWeight(com.graphhopper.util.EdgeIteratorState edge, boolean reverse) {
+                                Thread.currentThread().interrupt();
+                                return super.calcEdgeWeight(edge, reverse);
+                            }
+                            @Override public String getName() { return superWeighting.getName(); }
+                        };
+                var router = router(graph, index, interrupting);
+                assertThrows(java.util.concurrent.CancellationException.class,
+                        () -> router.route(request(21.0002, 21.001, null)));
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally { Thread.interrupted(); index.close(); }
+        }
+    }
+
+    @Test void lowerPerSearchLimitStillAppliesWithASharedBudget() {
+        try (var graph = graph(true)) {
+            var index = new LocationIndexTree(graph, graph.getDirectory());
+            try {
+                index.prepareIndex(); var router = router(graph, index);
+                var request = request(21.0002, 21.001, null);
+                var budget = new WaypointContinuityBudget(1000);
+                request.putHint(WaypointContinuityBudget.HINT, budget);
+                request.putHint(com.graphhopper.util.Parameters.Routing.MAX_VISITED_NODES, 1);
+                var result = router.route(request);
+                assertTrue(result.hasErrors());
+                assertTrue(budget.remaining() < 1000);
+            } finally { index.close(); }
+        }
+    }
+
+    @Test void existingFlexibleWaypointDistanceLimitStillApplies() {
+        try (var graph = graph(true)) {
+            var index = new LocationIndexTree(graph, graph.getDirectory());
+            try {
+                index.prepareIndex();
+                var config = new RouterConfig();
+                config.setNonChMaxWaypointDistance(10);
+                var router = router(graph, index, new DefaultWeightingFactory(graph, graph.getEncodingManager()), config);
+                var result = router.route(request(21.0002, 21.001, null));
+                assertTrue(result.hasErrors());
+                assertInstanceOf(com.graphhopper.util.exceptions.PointDistanceExceededException.class, result.getErrors().get(0));
             } finally { index.close(); }
         }
     }

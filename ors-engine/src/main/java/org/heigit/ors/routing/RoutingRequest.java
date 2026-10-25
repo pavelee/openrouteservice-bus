@@ -550,6 +550,7 @@ public class RoutingRequest extends ServiceRequest {
 
             boolean trackContinuity = logicalContinuity || getContinueStraight() && getCoordinates().length > 2;
             req.putHint("ors.continuity_track", trackContinuity);
+            if (continuityBudget != null) req.putHint(com.graphhopper.routing.WaypointContinuityBudget.HINT, continuityBudget);
             if (incomingEdgeKey != null) req.putHint("ors.continuity_incoming", incomingEdgeKey);
             if (targetEdgeKey != null) req.putHint("ors.continuity_target", targetEdgeKey);
             if (trackContinuity) setSpeedups(req, false, false, false, searchCntx.profileNameCH());
@@ -566,6 +567,10 @@ public class RoutingRequest extends ServiceRequest {
             if (DebugUtility.isDebug() && directedSegment) {
                 LOGGER.info("skipped segment: " + resp.getHints().getString("skipped_segment", null));
             }
+        } catch (com.graphhopper.routing.WaypointContinuityBudget.Exhausted ex) {
+            throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, ex.getMessage());
+        } catch (java.util.concurrent.CancellationException ex) {
+            throw ex;
         } catch (Exception ex) {
             LOGGER.error(ex);
             throw new InternalServerException(RoutingErrorCodes.UNKNOWN, "Unable to compute a route");
@@ -725,6 +730,7 @@ public class RoutingRequest extends ServiceRequest {
     }
 
     private boolean logicalContinuity;
+    private com.graphhopper.routing.WaypointContinuityBudget continuityBudget;
     private List<GHResponse> precomputedLegs;
 
     public static List<RouteResult[]> computeLogicalRoutes(List<RoutingRequest> requests, List<Integer> exceptions) throws Exception {
@@ -748,6 +754,10 @@ public class RoutingRequest extends ServiceRequest {
     }
 
     private static List<GHResponse> computeJointStates(List<RoutingRequest> requests, List<Integer> exceptions) throws Exception {
+        int maximumVisitedNodes = requests.stream().mapToInt(request ->
+                request.profile().getProfileConfiguration().getService().getMaximumVisitedNodes()).min().orElseThrow();
+        var budget = new com.graphhopper.routing.WaypointContinuityBudget(maximumVisitedNodes);
+        for (RoutingRequest request : requests) request.continuityBudget = budget;
         List<ContinuationState> states = List.of(new ContinuationState(null, 0, List.of()));
         int offset = 0;
         for (int group = 0; group < requests.size(); group++) {
@@ -756,6 +766,7 @@ public class RoutingRequest extends ServiceRequest {
             RoutingProfile rp = owner.profile();
             RouteSearchParameters searchParams = owner.getSearchParameters();
             for (int i = 1; i < coords.length; i++) {
+                com.graphhopper.routing.WaypointContinuityBudget.checkCancellation();
                 Map<Integer, ContinuationState> next = new java.util.LinkedHashMap<>();
                 GHResponse failure = null;
                 for (ContinuationState state : states) {

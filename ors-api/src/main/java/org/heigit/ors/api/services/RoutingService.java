@@ -39,7 +39,6 @@ public class RoutingService extends ApiService {
 
         boolean fallbackAlgorithm = searchParams.requiresFullyDynamicWeights();
         boolean dynamicWeights = searchParams.requiresDynamicPreprocessedWeights();
-        boolean useAlternativeRoutes = searchParams.getAlternativeRoutesCount() > 1;
 
         RoutingProfile rp = req.profile();
 
@@ -85,14 +84,7 @@ public class RoutingService extends ApiService {
                     }
                 }
 
-                if (profileProperties.getService().getMaximumDistance() != null && totalDist > profileProperties.getService().getMaximumDistance())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The approximated route distance must not be greater than %s meters.".formatted(profileProperties.getService().getMaximumDistance()));
-                if (dynamicWeights && profileProperties.getService().getMaximumDistanceDynamicWeights() != null && totalDist > profileProperties.getService().getMaximumDistanceDynamicWeights())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "By dynamic weighting, the approximated distance of a route segment must not be greater than %s meters.".formatted(profileProperties.getService().getMaximumDistanceDynamicWeights()));
-                if (fallbackAlgorithm && profileProperties.getService().getMaximumDistanceAvoidAreas() != null && totalDist > profileProperties.getService().getMaximumDistanceAvoidAreas())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "With these options, the approximated route distance must not be greater than %s meters.".formatted(profileProperties.getService().getMaximumDistanceAvoidAreas()));
-                if (useAlternativeRoutes && profileProperties.getService().getMaximumDistanceAlternativeRoutes() != null && totalDist > profileProperties.getService().getMaximumDistanceAlternativeRoutes())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The approximated route distance must not be greater than %s meters for use with the alternative Routes algorithm.".formatted(profileProperties.getService().getMaximumDistanceAlternativeRoutes()));
+                validateRouteDistance(req, totalDist);
             }
         }
 
@@ -104,6 +96,31 @@ public class RoutingService extends ApiService {
                 throw new ParameterValueException(RoutingErrorCodes.INCOMPATIBLE_PARAMETERS, "The maximum speed feature can only be used with cars and heavy vehicles.");
             }
         }
+    }
+
+    private static void validateRouteDistance(RoutingRequest req, double totalDist) throws ServerLimitExceededException {
+        ProfileProperties profileProperties = req.profile().getProfileConfiguration();
+        boolean dynamicWeights = req.getSearchParameters().requiresDynamicPreprocessedWeights();
+        boolean fallbackAlgorithm = req.getSearchParameters().requiresFullyDynamicWeights();
+        boolean useAlternativeRoutes = req.getSearchParameters().getAlternativeRoutesCount() > 1;
+        if (profileProperties.getService().getMaximumDistance() != null && totalDist > profileProperties.getService().getMaximumDistance())
+            throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The approximated route distance must not be greater than %s meters.".formatted(profileProperties.getService().getMaximumDistance()));
+        if (dynamicWeights && profileProperties.getService().getMaximumDistanceDynamicWeights() != null && totalDist > profileProperties.getService().getMaximumDistanceDynamicWeights())
+            throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "By dynamic weighting, the approximated distance of a route segment must not be greater than %s meters.".formatted(profileProperties.getService().getMaximumDistanceDynamicWeights()));
+        if (fallbackAlgorithm && profileProperties.getService().getMaximumDistanceAvoidAreas() != null && totalDist > profileProperties.getService().getMaximumDistanceAvoidAreas())
+            throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "With these options, the approximated route distance must not be greater than %s meters.".formatted(profileProperties.getService().getMaximumDistanceAvoidAreas()));
+        if (useAlternativeRoutes && profileProperties.getService().getMaximumDistanceAlternativeRoutes() != null && totalDist > profileProperties.getService().getMaximumDistanceAlternativeRoutes())
+            throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The approximated route distance must not be greater than %s meters for use with the alternative Routes algorithm.".formatted(profileProperties.getService().getMaximumDistanceAlternativeRoutes()));
+    }
+
+    static void validateLogicalRouteDistance(List<RoutingRequest> requests) throws ServerLimitExceededException {
+        double total = 0;
+        for (RoutingRequest request : requests) {
+            Coordinate[] coords = request.getCoordinates();
+            for (int i = 1; i < coords.length; i++)
+                total += DistanceCalcEarth.DIST_EARTH.calcDist(coords[i - 1].y, coords[i - 1].x, coords[i].y, coords[i].x);
+        }
+        for (RoutingRequest request : requests) validateRouteDistance(request, total);
     }
 
     @Override
@@ -172,10 +189,10 @@ public class RoutingService extends ApiService {
             count += coords.length - 1;
             requests.add(request);
         }
+        validateLogicalRouteDistance(requests);
         final int total = count;
         if (exceptions.stream().anyMatch(i -> i == null || i <= 0 || i >= total - 1))
             throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "logical_route.exceptions");
-        if (count == 2) return java.util.Collections.singletonList(requests.get(0).computeRoute());
         return RoutingRequest.computeLogicalRoutes(requests, exceptions);
     }
 

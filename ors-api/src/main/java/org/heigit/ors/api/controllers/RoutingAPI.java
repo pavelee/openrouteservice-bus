@@ -66,12 +66,15 @@ public class RoutingAPI {
     private final EndpointsProperties endpointsProperties;
     private final SystemMessageProperties systemMessageProperties;
     private final RoutingService routingService;
+    private final org.springframework.core.task.AsyncTaskExecutor logicalRouteExecutor;
 
-    public RoutingAPI(EndpointsProperties endpointsProperties, SystemMessageProperties systemMessageProperties, RoutingService routingService, HttpServletRequest servletRequest) {
+    public RoutingAPI(EndpointsProperties endpointsProperties, SystemMessageProperties systemMessageProperties, RoutingService routingService, HttpServletRequest servletRequest,
+            @org.springframework.beans.factory.annotation.Qualifier("applicationTaskExecutor") org.springframework.core.task.AsyncTaskExecutor logicalRouteExecutor) {
         this.servletRequest = servletRequest;
         this.endpointsProperties = endpointsProperties;
         this.systemMessageProperties = systemMessageProperties;
         this.routingService = routingService;
+        this.logicalRouteExecutor = logicalRouteExecutor;
     }
 
     // generic catch methods - when extra info is provided in the url, the other methods are accessed.
@@ -173,7 +176,7 @@ public class RoutingAPI {
             org.heigit.ors.api.responses.routing.RouteResponseInfo metadata) {}
 
     @PostMapping(value = "/{profile}/logical", produces = "application/json;charset=UTF-8")
-    public LogicalRouteResponse getLogicalRoute(@PathVariable String profile,
+    public org.springframework.web.context.request.async.WebAsyncTask<LogicalRouteResponse> getLogicalRoute(@PathVariable String profile,
             @RequestBody LogicalRouteRequest request) throws Exception {
         if (request.groups() == null)
             throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, "groups");
@@ -184,11 +187,13 @@ public class RoutingAPI {
             group.setResponseType(APIEnums.RouteResponseType.JSON);
             group.setGraphMarkerSelection(GraphMarkerHeader.read(servletRequest, RoutingErrorCodes.INVALID_PARAMETER_VALUE));
         }
-        var results = routingService.generateLogicalRoute(request.groups(), request.exceptions());
-        java.util.List<JSONRouteResponse> responses = new java.util.ArrayList<>();
-        for (int i = 0; i < results.size(); i++)
-            responses.add(new JSONRouteResponse(results.get(i), request.groups().get(i), systemMessageProperties, endpointsProperties));
-        return new LogicalRouteResponse(responses, responses.get(0).getInfo());
+        return new org.springframework.web.context.request.async.WebAsyncTask<>(60_000L, logicalRouteExecutor, () -> {
+            var results = routingService.generateLogicalRoute(request.groups(), request.exceptions());
+            java.util.List<JSONRouteResponse> responses = new java.util.ArrayList<>();
+            for (int i = 0; i < results.size(); i++)
+                responses.add(new JSONRouteResponse(results.get(i), request.groups().get(i), systemMessageProperties, endpointsProperties));
+            return new LogicalRouteResponse(responses, responses.get(0).getInfo());
+        });
     }
 
     @PostMapping(value = "/{profile}/gpx", produces = "application/gpx+xml;charset=UTF-8")
