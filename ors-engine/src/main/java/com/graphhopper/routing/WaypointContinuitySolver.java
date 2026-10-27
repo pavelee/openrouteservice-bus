@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class WaypointContinuitySolver extends Router.Solver {
+    public static final String PREPARED_WEIGHTING_HINT = "ors.continuity_prepared_weighting";
     private final WeightingFactory factory;
     private final GraphHopperStorage storage;
     private final LocationIndex index;
@@ -43,7 +44,14 @@ public final class WaypointContinuitySolver extends Router.Solver {
     @Override protected com.graphhopper.routing.weighting.Weighting createWeighting() {
         var hints = new com.graphhopper.util.PMap(request.getHints());
         hints.putObject("custom_model", request.getCustomModel());
-        var result = factory.createWeighting(profile, hints, false);
+        com.graphhopper.routing.weighting.Weighting[] prepared =
+                hints.getObject(PREPARED_WEIGHTING_HINT, null);
+        boolean reusable = prepared != null && !hints.has("block_area");
+        var result = reusable ? prepared[0] : null;
+        if (result == null) {
+            result = factory.createWeighting(profile, hints, false);
+            if (reusable) prepared[0] = result;
+        }
         if (hints.has("block_area")) {
             var area = com.graphhopper.storage.GraphEdgeIdFinder.createBlockArea(storage, index,
                     request.getPoints(), hints, new com.graphhopper.routing.util.FiniteWeightFilter(result));

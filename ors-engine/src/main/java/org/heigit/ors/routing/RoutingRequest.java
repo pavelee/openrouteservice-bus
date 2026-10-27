@@ -14,6 +14,7 @@
 package org.heigit.ors.routing;
 
 import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerPolicy;
+import org.heigit.ors.routing.graphhopper.extensions.routequality.GraphMarkerSelection;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.gtfs.*;
@@ -483,8 +484,18 @@ public class RoutingRequest extends ServiceRequest {
 
             if (props != null && !props.isEmpty())
                 req.getHints().putAll(props);
-            GraphMarkerPolicy.installSelection(
-                    searchCntx.getGraphHopper().getGraphHopperStorage(), req.getHints(), searchParams.getGraphMarkerSelection());
+            if (preparedContinuityWeighting == null || !continuitySelectionPrepared) {
+                GraphMarkerPolicy.installSelection(
+                        searchCntx.getGraphHopper().getGraphHopperStorage(), req.getHints(), searchParams.getGraphMarkerSelection());
+                if (preparedContinuityWeighting != null) {
+                    preparedContinuitySelection = req.getHints().getObject(GraphMarkerSelection.HINT, null);
+                    continuitySelectionPrepared = true;
+                }
+            } else if (preparedContinuitySelection != null) {
+                req.putHint(GraphMarkerSelection.HINT, preparedContinuitySelection);
+            }
+            if (preparedContinuityWeighting != null)
+                req.putHint(com.graphhopper.routing.WaypointContinuitySolver.PREPARED_WEIGHTING_HINT, preparedContinuityWeighting);
 
             if (searchParams.getCustomModel() != null) {
                 req.setCustomModel(searchParams.getCustomModel());
@@ -732,19 +743,34 @@ public class RoutingRequest extends ServiceRequest {
     private boolean logicalContinuity;
     private com.graphhopper.routing.WaypointContinuityBudget continuityBudget;
     private List<GHResponse> precomputedLegs;
+    private com.graphhopper.routing.weighting.Weighting[] preparedContinuityWeighting;
+    private GraphMarkerSelection preparedContinuitySelection;
+    private boolean continuitySelectionPrepared;
 
     public static List<RouteResult[]> computeLogicalRoutes(List<RoutingRequest> requests, List<Integer> exceptions) throws Exception {
-        for (RoutingRequest request : requests) request.logicalContinuity = true;
-        List<GHResponse> legs = computeJointStates(requests, exceptions);
-        List<RouteResult[]> results = new ArrayList<>();
-        int offset = 0;
         for (RoutingRequest request : requests) {
-            int count = request.getCoordinates().length - 1;
-            request.precomputedLegs = legs.subList(offset, offset + count);
-            results.add(request.computeLinearRoute());
-            offset += count;
+            request.logicalContinuity = true;
+            request.preparedContinuityWeighting = new com.graphhopper.routing.weighting.Weighting[1];
         }
-        return results;
+        try {
+            List<GHResponse> legs = computeJointStates(requests, exceptions);
+            List<RouteResult[]> results = new ArrayList<>();
+            int offset = 0;
+            for (RoutingRequest request : requests) {
+                int count = request.getCoordinates().length - 1;
+                request.precomputedLegs = legs.subList(offset, offset + count);
+                results.add(request.computeLinearRoute());
+                offset += count;
+            }
+            return results;
+        } finally {
+            for (RoutingRequest request : requests) {
+                if (request.preparedContinuityWeighting != null) request.preparedContinuityWeighting[0] = null;
+                request.preparedContinuityWeighting = null;
+                request.preparedContinuitySelection = null;
+                request.continuitySelectionPrepared = false;
+            }
+        }
     }
 
     private record ContinuationState(Integer incoming, double cost, List<GHResponse> legs) {}
