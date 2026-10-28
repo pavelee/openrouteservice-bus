@@ -52,6 +52,9 @@ public final class WaypointContinuitySolver extends Router.Solver {
             result = factory.createWeighting(profile, hints, false);
             if (reusable) prepared[0] = result;
         }
+        // Reusing a model must still initialize each attempt's heading snap scope.
+        if (index instanceof org.heigit.ors.routing.graphhopper.extensions.heading.HeadingAwareLocationIndex headingIndex)
+            headingIndex.useWeighting(result);
         if (hints.has("block_area")) {
             var area = com.graphhopper.storage.GraphEdgeIdFinder.createBlockArea(storage, index,
                     request.getPoints(), hints, new com.graphhopper.routing.util.FiniteWeightFilter(result));

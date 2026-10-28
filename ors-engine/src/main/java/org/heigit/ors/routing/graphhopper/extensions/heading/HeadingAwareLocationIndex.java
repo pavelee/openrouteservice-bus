@@ -68,10 +68,14 @@ public final class HeadingAwareLocationIndex implements LocationIndex {
     public WeightingFactory captureWeighting(WeightingFactory factory) {
         return (profile, hints, disableTurnCosts) -> {
             Weighting weighting = factory.createWeighting(profile, hints, disableTurnCosts);
-            Context context = current.get();
-            if (context != null) context.weighting = weighting;
+            useWeighting(weighting);
             return weighting;
         };
+    }
+
+    public void useWeighting(Weighting weighting) {
+        Context context = current.get();
+        if (context != null) context.weighting = weighting;
     }
 
     @Override

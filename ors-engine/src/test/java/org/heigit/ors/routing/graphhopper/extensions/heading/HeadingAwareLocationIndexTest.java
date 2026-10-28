@@ -4,12 +4,16 @@ import com.graphhopper.GHRequest;
 import com.graphhopper.config.Profile;
 import com.graphhopper.routing.DefaultWeightingFactory;
 import com.graphhopper.routing.RouterConfig;
+import com.graphhopper.routing.Router;
+import com.graphhopper.routing.WaypointContinuitySolver;
 import com.graphhopper.routing.WeightingFactory;
 import com.graphhopper.routing.ev.SimpleBooleanEncodedValue;
 import com.graphhopper.routing.ev.Subnetwork;
 import com.graphhopper.routing.util.CarFlagEncoder;
 import com.graphhopper.routing.util.EdgeFilter;
+import com.graphhopper.routing.util.EdgeFilterFactory;
 import com.graphhopper.routing.util.EncodingManager;
+import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.storage.GraphBuilder;
 import com.graphhopper.storage.GraphHopperStorage;
 import com.graphhopper.storage.RAMDirectory;
@@ -28,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -247,6 +252,60 @@ class HeadingAwareLocationIndexTest {
         PointList route = response.getBest().getPoints();
         assertEquals(21.0002, route.getLon(route.size() - 1), 0.000001);
         assertEquals(baselineId, index.findClosest(52.0004, 21, EdgeFilter.ALL_EDGES).getClosestEdge().getEdge());
+    }
+
+    @Test
+    void preparedContinuityWeightingPreservesHeadingSnapInEveryAttempt() {
+        for (boolean routerOwnsScope : new boolean[]{false, true}) {
+            var builds = new AtomicInteger();
+            WeightingFactory countedFactory = index.captureWeighting((p, hints, disableTurns) -> {
+                builds.incrementAndGet();
+                return new DefaultWeightingFactory(graph, graph.getEncodingManager()).createWeighting(p, hints, disableTurns);
+            });
+            var profiles = Map.of("car", profile);
+            var config = new RouterConfig();
+            Router router = routerOwnsScope
+                    ? new ORSRouter(graph, index, profiles, new PathDetailsBuilderFactory(),
+                            new TranslationMap().doImport(), config, countedFactory, Map.of(), Map.of())
+                    : new Router(graph, index, profiles, new PathDetailsBuilderFactory(),
+                            new TranslationMap().doImport(), config, countedFactory, Map.of(), Map.of()) {
+                        @Override protected Solver createSolver(GHRequest request, EdgeFilterFactory filters) {
+                            return new WaypointContinuitySolver(request, profiles, config, graph.getEncodingManager(),
+                                    countedFactory, graph, index).setEdgeFilterFactory(filters);
+                        }
+                    };
+            PointList expected = null;
+            List<Map<String, Object>> expectedDiagnostics = null;
+            var prepared = new Weighting[1];
+            for (int attempt = 0; attempt < 3; attempt++) {
+                var request = new GHRequest(new GHPoint(52.0004, 20.9997), new GHPoint(52.0004, 21), Double.NaN, 0);
+                request.setProfile("car");
+                request.setMaxSearchDistance(new double[]{400, 400});
+                request.putHint("ors.continuity_track", true);
+                request.putHint(HeadingAwareLocationIndex.DEVIATIONS_HINT, List.of(30.0, 30.0));
+                if (attempt > 0) request.putHint(WaypointContinuitySolver.PREPARED_WEIGHTING_HINT, prepared);
+                try (var scope = index.begin(request)) {
+                    var response = router.route(request);
+                    assertFalse(response.hasErrors(), response.getErrors().toString());
+                    var points = response.getBest().getPoints();
+                    assertEquals(21.0002, points.getLon(points.size() - 1), 0.000001);
+                    if (attempt == 0) {
+                        expected = points;
+                        expectedDiagnostics = scope.diagnostics();
+                        builds.set(0);
+                    } else {
+                        assertEquals(expected, points);
+                        assertEquals(1, builds.get());
+                        assertEquals(expectedDiagnostics, scope.diagnostics());
+                    }
+                    if (!routerOwnsScope) {
+                        assertEquals(1, scope.diagnostics().size());
+                        assertEquals(alternativeId, scope.diagnostics().get(0).get("selectedEdgeId"));
+                    }
+                }
+                assertEquals(baselineId, index.findClosest(52.0004, 21, EdgeFilter.ALL_EDGES).getClosestEdge().getEdge());
+            }
+        }
     }
 
     @Test
